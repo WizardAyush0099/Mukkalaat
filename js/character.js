@@ -758,6 +758,94 @@ export function poseFor(name, t) {
   return c(clamp(t, 0, 1));
 }
 
+/* ---------------- signature intros & wins ---------------- */
+const INTROS = {
+  // chest-beating showman
+  mukkal: keyed(STANCE, [
+    [0, {}],
+    [.22, { chest: [-.06, -.16, 0], head: [.06, .5, 0], shL: [-.45, .2, .95], elL: -.5, shR: [-.45, -.2, -.95], elR: -.5, hy: -.02 }],
+    [.45, { shL: [-1.15, .35, .18], elL: -2.45, shR: [-1.15, -.35, -.18], elR: -2.45, chest: [.12, -.16, 0], head: [-.12, .6, 0], hy: -.07 }],
+    [.62, { shL: [-1.05, .3, .3], elL: -2.2, shR: [-1.05, -.3, -.3], elR: -2.2, chest: [.02, -.16, 0], head: [.02, .6, 0] }],
+    [.8, { shL: [-1.15, .35, .18], elL: -2.45, shR: [-1.15, -.35, -.18], elR: -2.45, chest: [.12, -.16, 0], head: [-.12, .6, 0] }],
+    [1, STANCE]
+  ]),
+  // low kalari guard, then a blade-hand sweep
+  chhaya: keyed(STANCE, [
+    [0, {}],
+    [.25, { hy: -.12, hips: [.1, -.5, .02], spine: [.16, -.2, 0], chest: [.1, -.3, 0], head: [-.1, .8, 0], shL: [-1.3, .3, .5], elL: -2.2, shR: [-.5, -.3, -.7], elR: -1.4, hipL: [-.5, .2, .14], knL: .8, hipR: [.2, -.24, -.12], knR: .6 }],
+    [.55, { hy: -.1, hips: [.08, -.2, .02], spine: [.1, .1, 0], chest: [.06, .2, 0], head: [-.06, .2, 0], shR: [-1.35, .5, -.15], elR: -.35, wrR: [0, 0, .5], shL: [-.9, .2, .5], elL: -2.0, hipL: [-.45, .2, .14], knL: .7, hipR: [.18, -.24, -.12], knR: .55 }],
+    [1, STANCE]
+  ]),
+  // cracks his neck, fixes his collar, points
+  baaz: keyed(STANCE, [
+    [0, {}],
+    [.25, { head: [-.05, .95, .1], chest: [-.04, -.16, 0], shL: [-.7, .1, .5], shR: [-.5, -.1, -.45] }],
+    [.5, { head: [-.02, .3, 0], shR: [-1.45, -.25, -.1], elR: -2.6, wrR: [0, 0, -.3], chest: [.02, -.16, 0] }],
+    [.75, { shR: [-1.55, .05, -.05], elR: -.12, head: [-.08, .1, 0], chest: [.06, -.1, 0], drive: .04 }],
+    [1, STANCE]
+  ]),
+  // straightens his cuffs, then his tie
+  boss: keyed(STANCE, [
+    [0, {}],
+    [.22, { shL: [-.95, .35, .18], elL: -2.3, shR: [-.95, -.35, -.18], elR: -2.3, head: [-.1, .5, 0], chest: [.04, -.16, 0] }],
+    [.5, { shR: [-1.5, -.12, -.05], elR: -2.55, wrR: [0, 0, -.2], shL: [-.3, .1, .2], elL: -.4, head: [-.06, .3, 0] }],
+    [.78, { shR: [-.5, -.1, -.3], elR: -.5, head: [-.02, .55, 0], chest: [-.02, -.16, 0] }],
+    [1, STANCE]
+  ]),
+  // flashes the badge, then beckons
+  daya: keyed(STANCE, [
+    [0, {}],
+    [.22, { shR: [-1.95, -.1, -.12], elR: -1.95, wrR: [0, 0, -.4], head: [-.06, .35, 0], chest: [.04, -.16, 0] }],
+    [.5, { shR: [-1.25, -.25, -.2], elR: -1.5, gripR: 0, head: [-.04, .5, 0] }],
+    [.7, { shR: [-1.3, -.2, -.2], elR: -1.9, gripR: 1 }],
+    [1, STANCE]
+  ])
+};
+
+const WINS = {
+  // double biceps, roaring
+  mukkal: keyed(STANCE, [
+    [0, {}],
+    [.3, { hy: .01, chest: [-.12, -.16, 0], head: [.14, .3, 0], shL: [-2.35, .1, .55], elL: -1.5, shR: [-2.35, -.1, -.55], elR: -1.5, gripL: 1, gripR: 1 }],
+    [.6, { shL: [-1.85, .1, 1.15], elL: -2.3, shR: [-1.85, -.1, -1.15], elR: -2.3, chest: [-.06, -.16, 0], head: [.1, .1, 0] }],
+    [1, { shL: [-1.9, .1, 1.1], elL: -2.2, shR: [-1.9, -.1, -1.1], elR: -2.2, head: [.08, .2, 0] }]
+  ]),
+  // arms open, then a formal salute
+  chhaya: keyed(STANCE, [
+    [0, {}],
+    [.3, { shL: [-.35, .2, 1.15], elL: -.5, shR: [-.35, -.2, -1.15], elR: -.5, chest: [-.08, -.16, 0], head: [.1, .2, 0], hy: -.02 }],
+    [.6, { shL: [-1.25, .45, .12], elL: -2.3, shR: [-1.25, -.45, -.12], elR: -2.3, head: [-.12, .1, 0], chest: [.1, -.16, 0], hy: -.05 }],
+    [1, { shL: [-1.2, .45, .12], elL: -2.25, shR: [-1.2, -.45, -.12], elR: -2.25, head: [-.1, .1, 0] }]
+  ]),
+  // folds his arms and nods once
+  baaz: keyed(STANCE, [
+    [0, {}],
+    [.35, { shL: [-1.05, .55, .08], elL: -2.65, shR: [-1.05, -.55, -.08], elR: -2.65, chest: [-.06, -.16, 0], head: [.06, .1, 0], hy: -.02 }],
+    [.7, { head: [.14, .1, 0] }],
+    [1, { head: [.1, .1, 0] }]
+  ]),
+  // fixes his tie, then dismisses the room
+  boss: keyed(STANCE, [
+    [0, {}],
+    [.3, { shR: [-1.5, -.12, -.05], elR: -2.55, wrR: [0, 0, -.2], shL: [-.25, .1, .18], elL: -.35, head: [-.04, .3, 0] }],
+    [.6, { shR: [-.55, -.25, -.35], elR: -.55, wrR: [0, 0, .3], head: [-.02, -.35, 0], chest: [-.04, -.16, 0] }],
+    [1, { shR: [-.5, -.2, -.3], elR: -.5, head: [.02, -.3, 0] }]
+  ]),
+  // arms crossed, chin up
+  daya: keyed(STANCE, [
+    [0, {}],
+    [.35, { shL: [-1.0, .6, .05], elL: -2.7, shR: [-1.0, -.6, -.05], elR: -2.7, chest: [-.04, -.16, 0], head: [.08, .1, 0] }],
+    [.7, { head: [.16, .1, 0] }],
+    [1, { head: [.12, .1, 0] }]
+  ])
+};
+
+export function fighterClip(def, name, t) {
+  const table = name === 'intro' ? INTROS : name === 'win' ? WINS : null;
+  const fn = table && table[def.id];
+  return fn ? fn(clamp(t, 0, 1)) : poseFor(name, t);
+}
+
 /* ---------------- build the fighter ---------------- */
 export function buildFighter(def) {
   const B = def.build, P0 = def.palette;

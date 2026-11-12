@@ -6,7 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createRenderer, createEnvironment } from './env.js';
 import { createArena, STAGES } from './arena.js';
 import { createFX, createAudio } from './fx.js';
-import { CHARACTERS, buildFighter, poseFor, blendPose, STANCE, P } from './character.js';
+import { CHARACTERS, buildFighter, poseFor, fighterClip, blendPose, STANCE, P } from './character.js';
 import { clamp, lerp, rnd, radialGlowTexture } from './util.js';
 
 const $ = s => document.querySelector(s);
@@ -158,7 +158,7 @@ const other = f => f === F[0] ? F[1] : F[0];
 /* ---------------- pose ---------------- */
 function poseTarget(f) {
   switch (f.state) {
-    case 'intro': return poseFor('intro', clamp(f.stateT / 1.1, 0, 1));
+    case 'intro': return fighterClip(f.def, 'intro', clamp(f.stateT / 1.1, 0, 1));
     case 'walk': return poseFor(f.moveBack ? 'walkB' : 'walkF', f.walkPhase % 1);
     case 'crouch': return poseFor('crouch', (f.animT * .45) % 1);
     case 'block': return poseFor('block', 0);
@@ -169,7 +169,7 @@ function poseTarget(f) {
     case 'knockdown': return poseFor('knockdown', clamp(f.stateT / .95, 0, 1));
     case 'getup': return poseFor('getup', clamp(f.stateT / .65, 0, 1));
     case 'ko': return poseFor('ko', clamp(f.stateT / 1.05, 0, 1));
-    case 'win': return poseFor('win', clamp(f.stateT / 1.3, 0, 1));
+    case 'win': return fighterClip(f.def, 'win', clamp(f.stateT / 1.3, 0, 1));
     default: return poseFor('idle', (f.animT * .42) % 1);
   }
 }
@@ -412,7 +412,7 @@ function startRound() {
     f.comboT = 0;
     f.flash = 0;
     f.aura = 0;
-    f.pose = poseFor('intro', 0);
+    f.pose = fighterClip(f.def, 'intro', 0);
     f.snap = true;
     f.model.setAura(0);
   });
