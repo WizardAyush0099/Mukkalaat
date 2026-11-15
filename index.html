@@ -41,6 +41,8 @@
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;opacity:0;transition:opacity .35s ease}
   #hud.on{opacity:1}
   #hud button{pointer-events:auto}
+  #hud .stick{pointer-events:auto;cursor:grab}
+  #hud .stick:active{cursor:grabbing}
   .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;gap:clamp(6px,1.2vw,18px);padding:max(14px,env(safe-area-inset-top)) clamp(10px,2vw,30px) 0}
   .side{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
   .side.p2{align-items:flex-end}
@@ -234,6 +236,69 @@
   .fightbtn:hover{transform:translateY(-2px);filter:brightness(1.07)}
   .keyhint{font-size:clamp(9px,1.05vw,11px);letter-spacing:.16em;color:#7e726a;text-transform:uppercase;text-align:center}
 
+  /* main menu */
+  .menu-layout{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(14px,3vw,40px);width:100%;align-items:center;text-align:left}
+  .mainnav{display:flex;flex-direction:column;gap:9px;margin-top:clamp(10px,2vh,20px)}
+  .mainnav button{position:relative;display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:clamp(10px,1.4vw,15px) clamp(14px,1.8vw,20px);border:1px solid rgba(240,182,75,.26);
+    background:linear-gradient(90deg,rgba(38,16,20,.9),rgba(12,9,14,.55));text-align:left;transition:.15s}
+  .mainnav button:hover,.mainnav button:focus-visible{border-color:var(--gold);background:linear-gradient(90deg,rgba(86,28,18,.95),rgba(20,10,14,.7));transform:translateX(4px);outline:none}
+  .mainnav .lbl{display:block;font-family:var(--display);font-size:clamp(18px,2.2vw,26px);letter-spacing:.06em;color:#ffeccb;line-height:1}
+  .mainnav .sub{display:block;font-size:clamp(9px,1vw,11px);letter-spacing:.22em;color:#948780;margin-top:4px}
+  .mainnav .num{font-family:var(--num);font-weight:700;color:var(--gold);opacity:.6;font-size:13px;letter-spacing:.1em}
+  .menu-side{border-left:1px solid rgba(240,182,75,.18);padding-left:clamp(12px,2vw,26px);display:flex;flex-direction:column;gap:8px}
+  .menu-side .k{font-size:10px;letter-spacing:.3em;color:var(--gold);text-transform:uppercase}
+  .menu-side p{margin:0 0 4px;font-size:clamp(11px,1.1vw,12.5px);line-height:1.55;color:#a99c92}
+  .menu-side .roster{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:2px}
+  .menu-side .roster span{font-family:var(--num);font-weight:600;font-size:10.5px;letter-spacing:.1em;border:1px solid rgba(240,182,75,.28);padding:4px 7px;color:#e8d7bb}
+  @media (max-width:860px){.menu-layout{grid-template-columns:1fr;text-align:center}.menu-side{border-left:0;padding-left:0;display:none}}
+
+  /* panels */
+  .panel{width:min(760px,100%);background:linear-gradient(180deg,rgba(23,17,27,.97),rgba(9,7,12,.98));
+    border:1px solid rgba(240,182,75,.28);padding:clamp(16px,2.4vw,28px);box-shadow:0 30px 80px rgba(0,0,0,.65)}
+  .panel h2{margin:0 0 3px;font-family:var(--display);font-size:clamp(24px,3.4vw,38px);letter-spacing:.03em;color:#fff1d2}
+  .panel .psub{margin:0 0 clamp(12px,2vh,20px);font-size:10px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase}
+  .rows{display:grid;gap:7px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 12px;
+    border:1px solid rgba(240,182,75,.14);background:rgba(255,255,255,.02)}
+  .row .rl{display:block;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#e6d6bd}
+  .row .rd{display:block;font-size:10px;letter-spacing:.1em;color:#8e827a;margin-top:3px}
+  input[type=range]{width:min(240px,42vw);accent-color:#e0a53c}
+  .toggle{min-width:86px;padding:8px 12px;border:1px solid rgba(240,182,75,.3);font-size:11px;letter-spacing:.18em;color:#d9c8b4;transition:.15s}
+  .toggle[aria-pressed="true"]{background:linear-gradient(180deg,#3a1a14,#1d0c0e);color:#ffe6b0;border-color:var(--gold)}
+  .toggle:disabled{opacity:.45;cursor:not-allowed}
+  .panel .pfoot{display:flex;justify-content:space-between;gap:10px;margin-top:clamp(14px,2.4vh,22px);flex-wrap:wrap}
+  .binds{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+  .bindrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid rgba(240,182,75,.12)}
+  .bindrow span{font-size:11px;letter-spacing:.14em;color:#d9c8b4;text-transform:uppercase}
+  .bindrow button{min-width:78px;padding:6px 8px;border:1px solid rgba(240,182,75,.35);font-family:var(--num);font-weight:700;font-size:12px;letter-spacing:.1em;color:#ffe6b8}
+  .bindrow button.listening{border-color:#6cffe2;color:#bffcf1;animation:pulseMeter 1s infinite}
+  @media (max-width:640px){.binds{grid-template-columns:1fr}}
+
+  /* online lobby */
+  .joinwrap{display:flex;gap:6px}
+  #roomCode{width:112px;text-align:center;letter-spacing:.26em;font-family:var(--num);font-weight:700;font-size:14px;padding:8px 6px;
+    background:rgba(0,0,0,.45);border:1px solid rgba(240,182,75,.3);color:#ffe6b8;text-transform:uppercase}
+  #roomCode::placeholder{color:#6c6058;letter-spacing:.18em;font-size:11px}
+  .codebox{display:flex;align-items:center;gap:12px;padding:11px 13px;margin:0 0 8px;border:1px dashed rgba(240,182,75,.35);background:rgba(240,182,75,.05);flex-wrap:wrap}
+  .codebox .ck{font-size:10px;letter-spacing:.28em;color:var(--gold)}
+  .codeval{font-family:var(--num);font-weight:700;font-size:clamp(20px,2.8vw,28px);letter-spacing:.3em;color:#fff1d2;line-height:1}
+  .netdot{width:9px;height:9px;border-radius:50%;background:#5b4a3f;box-shadow:0 0 0 3px rgba(255,255,255,.04);flex:none}
+  .netdot.on{background:#4be08a;box-shadow:0 0 12px rgba(75,224,138,.85)}
+  .netnote{margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#8e827a}
+  .startbtn.small{font-size:13px;padding:11px 18px;clip-path:none}
+  .startbtn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+  .panel .close-x{position:absolute;top:10px;right:12px}
+
+  /* joystick */
+  .stick{display:block;position:relative;width:clamp(96px,14vw,124px);aspect-ratio:1;border-radius:50%;
+    border:1px solid rgba(240,182,75,.3);background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.07),rgba(8,6,12,.55));
+    touch-action:none;user-select:none;backdrop-filter:blur(4px)}
+  body.stick-mode .stick{display:block}
+  body.stick-mode .dpad{display:none}
+  .stick .knob{position:absolute;left:50%;top:50%;width:44%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);
+    background:radial-gradient(circle at 36% 28%,#fff3c4,#d4232c 72%);box-shadow:0 6px 18px rgba(0,0,0,.5),0 0 18px rgba(255,110,40,.45);pointer-events:none}
+
   /* stage select */
   #stages .frame{display:flex;flex-direction:column;gap:clamp(10px,2vh,20px)}
   .stagecards{display:grid;grid-template-columns:repeat(2,1fr);gap:clamp(10px,1.6vw,18px)}
@@ -375,13 +440,7 @@
   </div>
 
   <div class="deck">
-    <div class="dpad" id="dpad">
-      <button class="up" data-k="up" aria-label="Jump">▲</button>
-      <button class="left" data-k="left" aria-label="Move back">◀</button>
-      <button class="core" tabindex="-1" aria-hidden="true"></button>
-      <button class="right" data-k="right" aria-label="Move forward">▶</button>
-      <button class="down" data-k="down" aria-label="Crouch / block low">▼</button>
-    </div>
+    <div class="stick" id="stick" aria-label="Movement joystick"><div class="knob" id="stickKnob"></div></div>
     <div class="acts" id="acts">
       <button data-a="punch" aria-label="Punch">PUNCH</button>
       <button data-a="kick" aria-label="Kick">KICK</button>
@@ -394,28 +453,86 @@
 <!-- ================= TITLE ================= -->
 <div class="screen open" id="title">
   <div class="frame">
-    <div class="eyebrow">Arcade &nbsp;·&nbsp; 5 Fighters &nbsp;·&nbsp; 1P vs CPU &nbsp;·&nbsp; Best of 3</div>
-    <div class="logo">
-      <div class="slash"></div>
-      <h1>MUKKALAAT</h1>
-      <div class="sub">The <b>Iron Fist</b> Tournament</div>
-    </div>
-    <div class="titlemid">
-      <div class="rosterline" aria-hidden="true"><div>मु</div><div>छा</div><div>बा</div><div>बॉ</div><div>द</div></div>
-      <button class="startbtn" id="btnStart" type="button">ENTER THE AKHADA</button>
-    </div>
-    <div class="press">press enter &nbsp;/&nbsp; tap to start</div>
-    <div class="titlecard">
-      <div><span>Move</span><b>A / D</b></div>
-      <div><span>Jump</span><b>W</b></div>
-      <div><span>Crouch</span><b>S</b></div>
-      <div><span>Block</span><b>hold back</b></div>
-      <div><span>Punch</span><b>J</b></div>
-      <div><span>Kick</span><b>K</b></div>
-      <div><span>Grab</span><b>I</b></div>
-      <div><span>Super</span><b>L</b></div>
+    <div class="menu-layout">
+      <div>
+        <div class="eyebrow">Arcade &nbsp;·&nbsp; 5 Fighters &nbsp;·&nbsp; Best of 3</div>
+        <div class="logo">
+          <div class="slash"></div>
+          <h1>MUKKALAAT</h1>
+          <div class="sub">The <b>Iron Fist</b> Tournament</div>
+        </div>
+        <nav class="mainnav" aria-label="Main menu">
+          <button id="btnStart" type="button"><span><span class="lbl">FIGHT NOW</span><span class="sub">1P vs CPU · pick fighter and arena</span></span><span class="num">01</span></button>
+          <button id="btnOnline" type="button"><span><span class="lbl">ONLINE</span><span class="sub">remote opponents and rooms</span></span><span class="num">02</span></button>
+          <button id="btnSettings" type="button"><span><span class="lbl">SETTINGS</span><span class="sub">audio · graphics · screen shake</span></span><span class="num">03</span></button>
+          <button id="btnControls" type="button"><span><span class="lbl">CONTROLS</span><span class="sub">rebind keys · joystick</span></span><span class="num">04</span></button>
+        </nav>
+      </div>
+      <aside class="menu-side">
+        <div class="k">Roster</div>
+        <div class="roster"><span>MUKKAL</span><span>CHHAYA</span><span>BAAZ</span><span>BOSS</span><span>DAYA</span></div>
+        <div class="k">Arenas</div>
+        <p>The Old Akhada — torchlit mud pit.<br>Neon Bazaar — rain, lanterns, lightning.</p>
+        <div class="k">Default controls</div>
+        <p>A / D move · W jump · S crouch · hold back to block<br>J punch · K kick · I grab · L super</p>
+        <p style="color:#6c6058;font-size:11px">Rebind anything in CONTROLS. Touch gets a joystick plus the action buttons.</p>
+      </aside>
     </div>
     <div class="foot">Five fighters · two arenas · no judges</div>
+  </div>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<div class="screen" id="settings">
+  <div class="frame panel">
+    <h2>SETTINGS</h2>
+    <p class="psub">Saved on this device</p>
+    <div class="rows">
+      <div class="row"><div><span class="rl">Master volume</span><span class="rd">Hits, bells and crowd</span></div><input type="range" id="setVolume" min="0" max="100" step="1"></div>
+      <div class="row"><div><span class="rl">Sound</span><span class="rd">Mute everything</span></div><button class="toggle" id="setMuted" type="button" aria-pressed="false">ON</button></div>
+      <div class="row"><div><span class="rl">Graphics</span><span class="rd">Resolution, bloom and shadows</span></div><div class="seg" id="setQuality"><button data-q="low" type="button">LOW</button><button data-q="medium" type="button">MEDIUM</button><button data-q="high" type="button">HIGH</button></div></div>
+      <div class="row"><div><span class="rl">Screen shake</span><span class="rd">Impact camera movement</span></div><button class="toggle" id="setShake" type="button" aria-pressed="true">ON</button></div>
+    </div>
+    <div class="pfoot"><button class="ghost" id="btnSettingsBack" type="button">BACK</button><span class="keyhint">changes apply immediately</span></div>
+  </div>
+</div>
+
+<!-- ================= CONTROLS ================= -->
+<div class="screen" id="controls">
+  <div class="frame panel">
+    <h2>CONTROLS</h2>
+    <p class="psub">Click a key, then press the new one</p>
+    <div class="binds" id="binds"></div>
+    <div class="pfoot"><button class="ghost" id="btnControlsBack" type="button">BACK</button><button class="ghost" id="btnResetBinds" type="button">RESET DEFAULTS</button></div>
+  </div>
+</div>
+
+<!-- ================= ONLINE ================= -->
+<div class="screen" id="online">
+  <div class="frame panel" style="position:relative">
+    <h2>ONLINE</h2>
+    <p class="psub">Room code · live opponent</p>
+
+    <div id="onlineIdle">
+      <div class="rows">
+        <div class="row"><div><span class="rl">Create a room</span><span class="rd">You host. Share the 5-character code.</span></div><button class="toggle" id="btnHostRoom" type="button">CREATE</button></div>
+        <div class="row"><div><span class="rl">Join a room</span><span class="rd">Type the host's code</span></div><div class="joinwrap"><input id="roomCode" maxlength="5" placeholder="CODE" inputmode="latin" autocomplete="off" spellcheck="false" aria-label="Room code"><button class="toggle" id="btnJoinRoom" type="button">JOIN</button></div></div>
+      </div>
+      <p class="netnote" id="netNote">Both players keep this page open. The code pairs the two browsers through a public signalling relay; the fight data itself travels peer to peer.</p>
+    </div>
+
+    <div id="onlineRoom" hidden>
+      <div class="codebox"><span class="ck">ROOM CODE</span><div class="codeval" id="roomCodeOut">-----</div><button class="ghost" id="btnCopyCode" type="button">COPY</button></div>
+      <div class="rows">
+        <div class="row"><div><span class="rl">Link</span><span class="rd" id="netStatus">Opening the room…</span></div><span class="netdot" id="netDot" aria-hidden="true"></span></div>
+        <div class="row"><div><span class="rl">Your fighter</span><span class="rd">Each player picks their own</span></div><div class="seg" id="netFighters"></div></div>
+        <div class="row" id="netStageRow"><div><span class="rl">Arena</span><span class="rd">Host's choice</span></div><div class="seg" id="netStages"></div></div>
+      </div>
+      <p class="netnote" id="netHint">The host starts the match once both players are connected.</p>
+      <div class="pfoot"><button class="ghost" id="btnNetLeave" type="button">LEAVE</button><button class="startbtn small" id="btnNetStart" type="button" disabled>START MATCH</button></div>
+    </div>
+
+    <div class="pfoot" id="onlineFoot"><button class="ghost" id="btnOnlineBack" type="button">BACK</button><span class="keyhint" id="netRelayState">relay: loading</span></div>
   </div>
 </div>
 
@@ -516,6 +633,7 @@
   }
 }
 </script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
 <script type="module" src="./js/game.js"></script>
 <script>
   addEventListener('error', function(e){

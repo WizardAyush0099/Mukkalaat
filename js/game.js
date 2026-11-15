@@ -7,6 +7,8 @@ import { createRenderer, createEnvironment } from './env.js';
 import { createArena, STAGES } from './arena.js';
 import { createFX, createAudio } from './fx.js';
 import { CHARACTERS, buildFighter, poseFor, fighterClip, blendPose, STANCE, P } from './character.js';
+import { createGlbFighter } from './glbchar.js';
+import { createNet, makeRoomCode, normaliseCode } from './net.js';
 import { clamp, lerp, rnd, radialGlowTexture } from './util.js';
 
 const $ = s => document.querySelector(s);
@@ -64,8 +66,486 @@ const S = {
   stageIndex: 0,
   difficulty: 'normal',
   cpuIndex: 2,
-  comboShow: 0
+  comboShow: 0,
+  online: null
 };
+
+/* ---------------- settings & bindings ---------------- */
+const SET_KEY = 'mukkalaat.settings.v1';
+const DEFAULT_SET = { volume: .5, muted: false, quality: 'high', shake: true, stick: 'stick' };
+const SET = { ...DEFAULT_SET };
+try { Object.assign(SET, JSON.parse(localStorage.getItem(SET_KEY) || '{}')); } catch (e) { }
+/* movement is always the analog stick now; ignore any older saved d-pad preference */
+SET.stick = 'stick';
+
+const BIND_KEY = 'mukkalaat.binds.v1';
+const DEFAULT_BINDS = { forward: 'KeyD', back: 'KeyA', up: 'KeyW', down: 'KeyS', punch: 'KeyJ', kick: 'KeyK', grab: 'KeyI', super: 'KeyL' };
+const BINDS = { ...DEFAULT_BINDS };
+try { Object.assign(BINDS, JSON.parse(localStorage.getItem(BIND_KEY) || '{}')); } catch (e) { }
+
+const ACTION_LABEL = { forward: 'Move forward', back: 'Move back', up: 'Jump', down: 'Crouch', punch: 'Punch', kick: 'Kick', grab: 'Grab', super: 'Super' };
+const ARROW_ACTIONS = { ArrowRight: 'forward', ArrowLeft: 'back', ArrowUp: 'up', ArrowDown: 'down' };
+let bindingAction = null;
+
+function actionFor(code) {
+  for (const k in BINDS) if (BINDS[k] === code) return k;
+  return ARROW_ACTIONS[code] || null;
+}
+function qualRatio() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  return SET.quality === 'low' ? .8 : SET.quality === 'medium' ? Math.min(dpr, 1.25) : Math.min(dpr, 1.6);
+}
+function applySettings() {
+  audio.setVolume(SET.volume);
+  audio.setMuted(SET.muted);
+  renderer.setPixelRatio(qualRatio());
+  renderer.shadowMap.enabled = SET.quality !== 'low';
+  renderer.setSize(innerWidth, innerHeight, false);
+  composer.setSize(innerWidth, innerHeight);
+  bloom.enabled = SET.quality !== 'low';
+  document.body.classList.add('stick-mode');
+}
+function saveSettings() {
+  try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) { }
+  applySettings();
+}
+function saveBinds() {
+  try { localStorage.setItem(BIND_KEY, JSON.stringify(BINDS)); } catch (e) { }
+}
+function fmtKey(code) {
+  if (!code) return '—';
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'NUM ' + code.slice(6);
+  const named = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Space: 'SPACE', ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL' };
+  return named[code] || code.replace(/(Left|Right)$/, ' $1').toUpperCase();
+}
+function assignBind(act, code) {
+  if (['Escape', 'Tab', 'F5', 'F12'].includes(code)) return;
+  const prev = BINDS[act];
+  for (const k in BINDS) if (k !== act && BINDS[k] === code) BINDS[k] = prev;
+  BINDS[act] = code;
+  bindingAction = null;
+  saveBinds();
+  buildBindsUI();
+  audio.ui();
+}
+function syncSettingsUI() {
+  const v = $('#setVolume'); if (v) v.value = Math.round(SET.volume * 100);
+  const m = $('#setMuted'); if (m) { m.setAttribute('aria-pressed', String(SET.muted)); m.textContent = SET.muted ? 'OFF' : 'ON'; }
+  const s = $('#setShake'); if (s) { s.setAttribute('aria-pressed', String(SET.shake)); s.textContent = SET.shake ? 'ON' : 'OFF'; }
+  document.querySelectorAll('#setQuality button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.q === SET.quality)));
+}
+function buildBindsUI() {
+  const box = $('#binds');
+  if (!box) return;
+  box.innerHTML = '';
+  for (const act in BINDS) {
+    const row = document.createElement('div');
+    row.className = 'bindrow';
+    const label = document.createElement('span');
+    label.textContent = ACTION_LABEL[act] || act;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = fmtKey(BINDS[act]);
+    btn.addEventListener('click', () => {
+      bindingAction = act;
+      box.querySelectorAll('button').forEach(b => b.classList.remove('listening'));
+      btn.classList.add('listening');
+      btn.textContent = 'PRESS…';
+      audio.unlock(); audio.ui();
+    });
+    row.append(label, btn);
+    box.appendChild(row);
+  }
+}
+function openPanel(sel) {
+  ['#title', '#select', '#stages', '#versus', '#result', '#pause', '#settings', '#controls', '#online'].forEach(hide);
+  show(sel);
+  S.mode = 'menu';
+  S.paused = false;
+  S.phase = 'none';
+  $('#hud').classList.remove('on');
+  audio.ui();
+}
+function jumpFighter(f) {
+  if (!f || S.mode !== 'fight' || S.locked || S.paused || f.air || f.action) return;
+  if (!['idle', 'walk', 'crouch', 'block'].includes(f.state)) return;
+  f.air = true; f.vy = 4.4; f.state = 'jump'; f.stateT = 0;
+  f.blocking = false;
+  audio.jump();
+}
+function jumpNow() {
+  // online guests send the jump bit and let the host run it
+  if (S.online && S.online.role === 'guest') return;
+  jumpFighter(F[0]);
+}
+function pressAttack(kind) {
+  if (S.online && S.online.role === 'guest') { sendNet({ t: 'atk', a: kind }); return; }
+  tryAttack(F[0], kind);
+}
+
+/* ---------------- online ---------------- */
+const NET = {
+  client: null,
+  role: null,
+  code: null,
+  connected: false,
+  ownFighter: 0,
+  peerFighter: null,
+  stage: 'akhada',
+  guestKeys: { left: false, right: false, up: false, down: false },
+  guestPrevUp: false,
+  lastSig: -1,
+  snapT: 0,
+  snap: null,
+  snapAt: 0,
+  lastRound: 1
+};
+
+function netClient() {
+  if (!NET.client) NET.client = createNet({
+    onReady() { netStatus('Room ' + NET.code + ' is open. Waiting for a challenger…', true); refreshNetUI(); },
+    onConnect() {
+      NET.connected = true;
+      netStatus('Connected. ' + (NET.role === 'host' ? 'Start when ready.' : 'Waiting for the host to start.'), true);
+      refreshNetUI();
+      if (NET.role === 'host') sendNet({ t: 'lobby', stage: NET.stage, host: CHARACTERS[NET.ownFighter].id });
+    },
+    onData(d) { handleNet(d); },
+    onDisconnect() {
+      NET.connected = false;
+      netStatus('Opponent disconnected.', false);
+      refreshNetUI();
+      if (S.online) endOnlineMatch();
+    },
+    onError(msg) { netStatus(msg, false); refreshNetUI(); },
+    onClosed() { }
+  });
+  return NET.client;
+}
+function sendNet(msg) { return NET.client ? NET.client.send(msg) : false; }
+function netStatus(text, ok) {
+  const el = $('#netStatus');
+  if (el) el.textContent = text;
+  const dot = $('#netDot');
+  if (dot) dot.classList.toggle('on', !!ok);
+}
+function openOnline() {
+  const idle = $('#onlineIdle'), room = $('#onlineRoom');
+  if (idle) idle.hidden = false;
+  if (room) room.hidden = true;
+  NET.ownFighter = S.selected;
+  const rs = $('#netRelayState');
+  if (rs) rs.textContent = 'relay: ' + (typeof window.Peer === 'function' ? 'ready' : 'offline');
+  const foot = $('#onlineFoot');
+  if (foot) foot.hidden = false;
+  openPanel('#online');
+  if (NET.client && NET.connected) showOnlineRoom();
+}
+function showOnlineRoom() {
+  const idle = $('#onlineIdle'), room = $('#onlineRoom');
+  if (idle) idle.hidden = true;
+  if (room) room.hidden = false;
+  const codeEl = $('#roomCodeOut');
+  if (codeEl) codeEl.textContent = NET.code || '-----';
+  const foot = $('#onlineFoot');
+  if (foot) foot.hidden = true;
+  buildNetPickers();
+  refreshNetUI();
+}
+function buildNetPickers() {
+  const fb = $('#netFighters');
+  if (fb && fb.childElementCount !== CHARACTERS.length) {
+    fb.innerHTML = '';
+    CHARACTERS.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = c.name;
+      b.addEventListener('click', () => {
+        NET.ownFighter = i;
+        buildNetPickers();
+        audio.ui();
+        sendNet({ t: 'pick', id: CHARACTERS[i].id });
+      });
+      fb.appendChild(b);
+    });
+  }
+  if (fb) Array.from(fb.children).forEach((b, i) => b.setAttribute('aria-pressed', String(i === NET.ownFighter)));
+
+  const sb = $('#netStages');
+  if (sb && sb.childElementCount !== STAGES.length) {
+    sb.innerHTML = '';
+    STAGES.forEach(s => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = s.id.toUpperCase();
+      b.addEventListener('click', () => {
+        NET.stage = s.id;
+        buildNetPickers();
+        audio.ui();
+        sendNet({ t: 'stage', stage: s.id });
+      });
+      sb.appendChild(b);
+    });
+  }
+  if (sb) Array.from(sb.children).forEach((b, i) => b.setAttribute('aria-pressed', String(STAGES[i].id === NET.stage)));
+}
+function refreshNetUI() {
+  const dot = $('#netDot');
+  if (dot) dot.classList.toggle('on', NET.connected);
+  const host = NET.role === 'host';
+  const start = $('#btnNetStart');
+  if (start) {
+    start.textContent = host ? 'START MATCH' : 'WAITING FOR HOST';
+    start.disabled = !(host && NET.connected);
+  }
+  const stageRow = $('#netStageRow');
+  if (stageRow) stageRow.hidden = !host;
+  const hint = $('#netHint');
+  if (hint) hint.textContent = host
+    ? (NET.connected ? 'Press START MATCH to send both fighters to the arena.' : 'Waiting for a challenger to join…')
+    : (NET.connected ? 'The host chooses the arena and starts the match.' : 'Connecting to the host…');
+}
+function hostOnlineRoom() {
+  if (typeof window.Peer !== 'function') { netStatus('Relay did not load. Check your connection and reload.', false); return; }
+  NET.role = 'host';
+  NET.code = makeRoomCode();
+  NET.ownFighter = S.selected;
+  NET.peerFighter = null;
+  NET.connected = false;
+  showOnlineRoom();
+  netStatus('Opening room ' + NET.code + '…', false);
+  netClient().host(NET.code);
+}
+function joinOnlineRoom() {
+  const code = normaliseCode($('#roomCode') ? $('#roomCode').value : '');
+  if (typeof window.Peer !== 'function') { netStatus('Relay did not load. Check your connection and reload.', false); return; }
+  if (code.length !== 5) { netStatus('Type the five-character room code first.', false); return; }
+  NET.role = 'guest';
+  NET.code = code;
+  NET.ownFighter = S.selected;
+  NET.peerFighter = null;
+  NET.connected = false;
+  showOnlineRoom();
+  netStatus('Dialling room ' + code + '…', false);
+  netClient().join(code);
+}
+function handleNet(d) {
+  if (!d || typeof d !== 'object') return;
+  switch (d.t) {
+    case 'lobby':
+      if (d.host) {
+        const i = CHARACTERS.findIndex(c => c.id === d.host);
+        if (i >= 0) NET.peerFighter = i;
+      }
+      if (d.stage) { NET.stage = d.stage; buildNetPickers(); }
+      break;
+    case 'pick': {
+      const i = CHARACTERS.findIndex(c => c.id === d.id);
+      if (i >= 0) NET.peerFighter = i;
+      refreshNetUI();
+      break;
+    }
+    case 'stage':
+      NET.stage = d.stage || NET.stage;
+      buildNetPickers();
+      break;
+    case 'start':
+      if (NET.role === 'guest') beginOnline(d.p1, d.p2, d.stage, 'guest');
+      break;
+    case 'in':
+      NET.guestKeys = {
+        left: !!(d.k & 1), right: !!(d.k & 2), up: !!(d.k & 4), down: !!(d.k & 8)
+      };
+      break;
+    case 'atk':
+      if (NET.role === 'host' && S.mode === 'fight' && F[1] && !S.locked) tryAttack(F[1], d.a);
+      break;
+    case 'snap':
+      if (NET.role === 'guest') { NET.snap = d; NET.snapAt = performance.now(); }
+      break;
+    case 'over':
+      if (NET.role === 'guest') showOnlineResult(!!d.guestWin);
+      break;
+    default: break;
+  }
+}
+function startOnlineMatch() {
+  if (NET.role !== 'host' || !NET.connected) return;
+  let peerIdx = NET.peerFighter;
+  if (peerIdx === null || peerIdx === NET.ownFighter) peerIdx = (NET.ownFighter + 1) % CHARACTERS.length;
+  const p1 = CHARACTERS[NET.ownFighter].id;
+  const p2 = CHARACTERS[peerIdx].id;
+  audio.unlock();
+  sendNet({ t: 'start', p1, p2, stage: NET.stage });
+  beginOnline(p1, p2, NET.stage, 'host');
+}
+function beginOnline(p1Id, p2Id, stageId, role) {
+  const d1 = CHARACTERS.find(c => c.id === p1Id) || CHARACTERS[0];
+  const d2 = CHARACTERS.find(c => c.id === p2Id) || CHARACTERS[1];
+  S.online = { role };
+  NET.snap = null; NET.snapAt = 0; NET.guestPrevUp = false; NET.lastSig = -1; NET.lastRound = 1;
+  S.selected = CHARACTERS.indexOf(d1);
+  S.cpuIndex = CHARACTERS.indexOf(d2);
+  S.stage = stageId || 'akhada';
+  ['#online', '#select', '#title', '#result', '#pause', '#stages', '#settings', '#controls'].forEach(hide);
+  S.mode = 'versus';
+  S.paused = false;
+  S.comboShow = 0;
+  S.locked = true;
+  $('#hud').classList.remove('on');
+  setFighters(d1, d2);
+  F[0].dmgMul = 1; F[1].dmgMul = 1;
+  F[0].speedMul = .85 + d1.stats.SPEED * .022;
+  F[1].speedMul = .85 + d2.stats.SPEED * .022;
+  S.round = 1;
+  updatePips();
+  setStage(S.stage);
+  const stageMeta = STAGES.find(s => s.id === S.stage) || STAGES[0];
+  $('#stagechip').textContent = `${stageMeta.chip} · ONLINE`;
+  $('#name1').textContent = d1.name;
+  $('#style1').textContent = d1.style;
+  $('#name2').textContent = d2.name;
+  $('#style2').textContent = d2.style;
+  $('#cpuName').textContent = d2.name;
+  const vs = $('#versus');
+  $('#vsL').style.setProperty('--vc', d1.theme[1]);
+  $('#vsR').style.setProperty('--vc', d2.theme[1]);
+  $('#vsL').querySelector('.vname').textContent = d1.name;
+  $('#vsL').querySelector('.vtag').textContent = role === 'host' ? 'YOUR SIDE' : 'HOST';
+  $('#vsR').querySelector('.vname').textContent = d2.name;
+  $('#vsR').querySelector('.vtag').textContent = role === 'host' ? 'CHALLENGER' : 'YOUR SIDE';
+  vs.classList.add('open');
+  announce2();
+  audio.bell();
+  setTimeout(() => {
+    if (S.mode !== 'versus') return;
+    vs.classList.remove('open');
+    $('#hud').classList.add('on');
+    S.mode = 'fight';
+    startRound();
+  }, 1900);
+}
+function packFighter(f) {
+  return [
+    Math.round(f.x * 100) / 100, Math.round(f.y * 100) / 100, f.facing,
+    Math.round(f.health * 10) / 10, Math.round(f.meter),
+    f.state, Math.round(f.stateT * 1000) / 1000, Math.round(f.animT * 1000) / 1000,
+    f.air ? 1 : 0, f.crouch ? 1 : 0, f.blocking ? 1 : 0, Math.round(f.walkPhase * 100) / 100,
+    f.action ? f.action.name : 0, f.action ? Math.round(f.action.t * 1000) / 1000 : 0
+  ];
+}
+function netHostTick(raw) {
+  if (!NET.connected) return;
+  NET.snapT += raw;
+  if (NET.snapT < .05) return;
+  NET.snapT = 0;
+  sendNet({
+    t: 'snap',
+    p: [packFighter(F[0]), packFighter(F[1])],
+    s: [S.phase, Math.round(S.time * 10) / 10, S.round, S.locked ? 1 : 0, S.hitstop, F[0].wins, F[1].wins]
+  });
+}
+function applyRemote(f, a, dt) {
+  f.x = lerp(f.x, a[0], .4);
+  f.y = a[1];
+  f.facing = a[2];
+  f.health = a[3];
+  f.meter = a[4];
+  f.air = !!a[8];
+  f.crouch = !!a[9];
+  f.blocking = !!a[10];
+  f.walkPhase = a[11];
+  if (f.state !== a[5]) { f.state = a[5]; f.stateT = a[6]; f.snap = true; }
+  else f.stateT += dt;
+  if (a[12]) {
+    if (!f.action || f.action.name !== a[12]) f.action = { name: a[12], mv: MOVES[a[12]], t: a[13], hits: [] };
+    else f.action.t += dt;
+    if (!f.action.mv) f.action = null;
+  } else f.action = null;
+}
+function predictGuest(f, dt) {
+  if (!f || f.air || !['idle', 'walk', 'crouch', 'block'].includes(f.state)) return;
+  const move = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  if (!move) return;
+  const away = Math.sign(f.x - F[0].x) || 1;
+  const back = Math.sign(move) === away;
+  f.x = clamp(f.x + move * (back ? .8 : 2.15) * f.speedMul * dt, -4.35, 4.35);
+}
+function netGuestTick(raw) {
+  if (!NET.connected) return;
+  const sig = (keys.left ? 1 : 0) | (keys.right ? 2 : 0) | (keys.up ? 4 : 0) | (keys.down ? 8 : 0);
+  if (sig !== NET.lastSig) { NET.lastSig = sig; sendNet({ t: 'in', k: sig }); }
+  if (!NET.snap) return;
+  const p = NET.snap.p, s = NET.snap.s;
+  applyRemote(F[0], p[0], raw);
+  applyRemote(F[1], p[1], raw);
+  S.phase = s[0];
+  S.time = s[1];
+  S.round = s[2];
+  S.locked = !!s[3];
+  F[0].wins = s[5];
+  F[1].wins = s[6];
+  if (s[2] !== NET.lastRound) {
+    NET.lastRound = s[2];
+    $('#roundlab').textContent = 'ROUND ' + s[2];
+    updatePips();
+  }
+  if (S.phase === 'battle' && !S.saidFight) { S.saidFight = true; announce('FIGHT!', true); audio.bell(); }
+  if (S.phase === 'battle' && !S.locked) predictGuest(F[1], raw);
+}
+function netRemoteIntent(dt) {
+  const f = F[1];
+  if (!f || S.locked || S.paused) return;
+  if (['attack', 'hit', 'knockdown', 'getup', 'ko', 'win', 'blockstun'].includes(f.state)) { NET.guestPrevUp = NET.guestKeys.up; return; }
+  const k = NET.guestKeys;
+  if (f.air) {
+    const drift = (k.right ? 1 : 0) - (k.left ? 1 : 0);
+    f.x += drift * 1.1 * dt;
+    NET.guestPrevUp = k.up;
+    return;
+  }
+  const move = (k.right ? 1 : 0) - (k.left ? 1 : 0);
+  const away = Math.sign(f.x - F[0].x) || 1;
+  const back = move !== 0 && Math.sign(move) === away;
+  if (back) {
+    f.state = 'block'; f.blocking = true; f.crouch = false;
+    f.x += move * .8 * f.speedMul * dt;
+  } else if (move) {
+    f.state = 'walk'; f.blocking = false; f.crouch = false;
+    f.x += move * 2.15 * f.speedMul * dt;
+  } else if (k.down) {
+    f.state = 'crouch'; f.crouch = true; f.blocking = false;
+  } else {
+    f.state = 'idle'; f.blocking = false; f.crouch = false;
+  }
+  if (k.up && !NET.guestPrevUp) jumpFighter(f);
+  NET.guestPrevUp = k.up;
+}
+function showOnlineResult(guestWin) {
+  S.mode = 'result';
+  S.locked = true;
+  showResult(guestWin);
+}
+function leaveOnline() {
+  if (NET.client) { try { NET.client.close(); } catch (e) { } }
+  NET.connected = false;
+  NET.role = null;
+  NET.code = null;
+  NET.peerFighter = null;
+  NET.snap = null;
+  NET.snapAt = 0;
+  NET.lastSig = -1;
+  NET.snapT = 0;
+  NET.guestPrevUp = false;
+  S.online = null;
+}
+function endOnlineMatch() {
+  leaveOnline();
+  hide('#pause'); hide('#versus'); hide('#result');
+  goTitle();
+}
 
 const DIFF = {
   easy: { think: .85, jitter: .6, block: .16, aggr: .45, dmg: .85, speed: .85 },
@@ -122,7 +602,7 @@ function disposeModel(model) {
 }
 
 function makeFighter(def, side, x) {
-  const model = buildFighter(def);
+  const model = def.model ? createGlbFighter(def) : buildFighter(def);
   scene.add(model.root);
   const f = {
     def, model, side, x, homeX: x, y: 0, vy: 0, vx: 0,
@@ -474,10 +954,7 @@ function announce2() {
   });
 }
 
-function finishMatch() {
-  S.mode = 'result';
-  S.locked = true;
-  const win = F[0].wins > F[1].wins;
+function showResult(win) {
   $('#resTitle').textContent = win ? 'YOU WIN' : 'YOU LOSE';
   $('#resTitle').style.textShadow = win
     ? '0 0 50px rgba(255,180,60,.7), 6px 6px 0 #6b0b13'
@@ -486,10 +963,21 @@ function finishMatch() {
   $('#resLine').textContent = `${F[0].def.name} ${F[0].wins} — ${F[1].wins} ${F[1].def.name}`;
   $('#hud').classList.remove('on');
   show('#result');
+  const btn = $('#btnRematch');
+  if (btn) btn.textContent = S.online ? 'LEAVE ROOM' : 'REMATCH';
   audio.cheer(win ? 1 : .35);
 }
 
+function finishMatch() {
+  S.mode = 'result';
+  S.locked = true;
+  const win = F[0].wins > F[1].wins;
+  showResult(win);
+  if (S.online && S.online.role === 'host') sendNet({ t: 'over', guestWin: !win });
+}
+
 function rematch() {
+  if (S.online) { leaveOnline(); goTitle(); return; }
   hide('#result');
   S.round = 1;
   beginMatch();
@@ -508,6 +996,7 @@ function goSelect() {
 
 function goTitle() {
   hide('#select'); hide('#result'); hide('#pause'); hide('#versus'); hide('#stages');
+  hide('#settings'); hide('#controls'); hide('#online');
   show('#title');
   S.mode = 'title';
   S.phase = 'none';
@@ -856,7 +1345,7 @@ function updateHUD() {
    camera
    ========================================================= */
 function updateCamera(dt) {
-  if (S.mode === 'title' || S.mode === 'select' || S.mode === 'stage' || S.mode === 'versus') {
+  if (S.mode === 'title' || S.mode === 'select' || S.mode === 'stage' || S.mode === 'versus' || S.mode === 'menu') {
     const t = clockState.t * .14;
     const r = 7.4;
     camera.position.lerp(new THREE.Vector3(Math.sin(t) * r, 2.6 + Math.sin(t * .8) * .35, Math.cos(t) * r), 1 - Math.exp(-1.5 * dt));
@@ -883,7 +1372,7 @@ function updateCamera(dt) {
   camera.position.lerp(desired, 1 - Math.exp(-5 * dt));
 
   const target = new THREE.Vector3(mid * .88, 1.05 + Math.min(a.y, b.y) * .1 + S.zoom * .06, 0);
-  if (S.shake > 0) {
+  if (S.shake > 0 && SET.shake) {
     const k = S.shake * S.shake;
     camera.position.x += (Math.random() - .5) * k;
     camera.position.y += (Math.random() - .5) * k;
@@ -953,14 +1442,54 @@ function hide(sel) { const e = $(sel); if (e) e.classList.remove('open'); }
 $('#btnStart').addEventListener('click', () => { audio.unlock(); buildCards(); goSelect(); });
 $('#btnFight').addEventListener('click', () => { audio.unlock(); buildCards(); goStage(); });
 $('#btnEnterStage').addEventListener('click', () => { audio.unlock(); beginMatch(); });
-$('#btnRematch').addEventListener('click', () => { audio.unlock(); rematch(); });
+$('#btnRematch').addEventListener('click', () => {
+  audio.unlock();
+  if (S.online) { leaveOnline(); goTitle(); return; }
+  rematch();
+});
 $('#btnRoster').addEventListener('click', () => { goSelect(); });
 $('#btnPause').addEventListener('click', () => togglePause(true));
 $('#btnResume').addEventListener('click', () => togglePause(false));
 $('#btnRestart').addEventListener('click', () => { hide('#pause'); S.paused = false; beginMatch(); });
-$('#btnQuit').addEventListener('click', () => { hide('#pause'); S.paused = false; goSelect(); });
+$('#btnQuit').addEventListener('click', () => {
+  hide('#pause'); S.paused = false;
+  if (S.online) { leaveOnline(); goTitle(); return; }
+  goSelect();
+});
 $('#btnSound').addEventListener('click', toggleSound);
 $('#btnMute').addEventListener('click', () => { toggleSound(); });
+
+/* menu + panels */
+$('#btnOnline').addEventListener('click', openOnline);
+$('#btnHostRoom').addEventListener('click', () => { audio.unlock(); hostOnlineRoom(); });
+$('#btnJoinRoom').addEventListener('click', () => { audio.unlock(); joinOnlineRoom(); });
+$('#roomCode').addEventListener('input', e => { e.target.value = normaliseCode(e.target.value); });
+$('#roomCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); audio.unlock(); joinOnlineRoom(); } });
+$('#btnNetStart').addEventListener('click', startOnlineMatch);
+$('#btnNetLeave').addEventListener('click', () => { leaveOnline(); openOnline(); audio.ui(); });
+$('#btnCopyCode').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(NET.code || '');
+    netStatus('Code copied.', true);
+  } catch (e) {
+    netStatus('Copy blocked by the browser — read the code aloud.', false);
+  }
+  audio.ui();
+});
+$('#btnOnlineBack').addEventListener('click', () => {
+  if (S.online) { leaveOnline(); goTitle(); return; }
+  if (NET.role) { leaveOnline(); openOnline(); return; }
+  goTitle();
+});
+$('#btnSettings').addEventListener('click', () => { syncSettingsUI(); openPanel('#settings'); });
+$('#btnControls').addEventListener('click', () => { buildBindsUI(); openPanel('#controls'); });
+$('#btnSettingsBack').addEventListener('click', goTitle);
+$('#btnControlsBack').addEventListener('click', goTitle);
+$('#btnResetBinds').addEventListener('click', () => { Object.assign(BINDS, DEFAULT_BINDS); saveBinds(); buildBindsUI(); audio.ui(); });
+$('#setVolume').addEventListener('input', e => { SET.volume = e.target.value / 100; saveSettings(); });
+$('#setMuted').addEventListener('click', () => { SET.muted = !SET.muted; audio.unlock(); syncSettingsUI(); saveSettings(); });
+$('#setShake').addEventListener('click', () => { SET.shake = !SET.shake; syncSettingsUI(); saveSettings(); audio.ui(); });
+document.querySelectorAll('#setQuality button').forEach(b => b.addEventListener('click', () => { SET.quality = b.dataset.q; syncSettingsUI(); saveSettings(); audio.ui(); }));
 
 function togglePause(force) {
   if (S.mode !== 'fight') return;
@@ -972,6 +1501,9 @@ function togglePause(force) {
 function toggleSound() {
   audio.unlock();
   const on = audio.toggle();
+  SET.muted = !on;
+  try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) { }
+  syncSettingsUI();
   const icon = $('#sndIcon');
   const label = $('#btnMute');
   if (label) label.textContent = 'SOUND: ' + (on ? 'ON' : 'OFF');
@@ -984,6 +1516,12 @@ function toggleSound() {
 window.addEventListener('keydown', e => {
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if (bindingAction) {
+    e.preventDefault();
+    assignBind(bindingAction, e.code);
+    return;
+  }
 
   if (e.code === 'KeyM') { toggleSound(); return; }
   if (e.code === 'Escape' || e.code === 'KeyP') {
@@ -1018,34 +1556,30 @@ window.addEventListener('keydown', e => {
   if (S.mode !== 'fight') return;
 
   if (e.repeat) return;
-  switch (e.code) {
-    case 'ArrowLeft': case 'KeyA': keys.left = true; e.preventDefault(); break;
-    case 'ArrowRight': case 'KeyD': keys.right = true; e.preventDefault(); break;
-    case 'ArrowDown': case 'KeyS': keys.down = true; e.preventDefault(); break;
-    case 'ArrowUp': case 'KeyW': case 'Space':
-      e.preventDefault();
-      if (!keys.up && F[0] && !F[0].air && !F[0].action && !S.locked &&
-        ['idle', 'walk', 'crouch', 'block'].includes(F[0].state)) {
-        F[0].air = true; F[0].vy = 4.4; F[0].state = 'jump'; F[0].stateT = 0;
-        F[0].blocking = false;
-        audio.jump();
-      }
-      keys.up = true;
-      break;
-    case 'KeyJ': tryAttack(F[0], 'punch'); break;
-    case 'KeyK': tryAttack(F[0], 'kick'); break;
-    case 'KeyI': tryAttack(F[0], 'grab'); break;
-    case 'KeyL': tryAttack(F[0], 'super'); break;
+  const act = actionFor(e.code);
+  if (!act) return;
+  e.preventDefault();
+  if (act === 'up') {
+    if (!keys.up) jumpNow();
+    keys.up = true;
+  } else if (act === 'forward') {
+    keys.right = true;
+  } else if (act === 'back') {
+    keys.left = true;
+  } else if (act === 'down') {
+    keys.down = true;
+  } else {
+    pressAttack(act);
   }
 });
 
 window.addEventListener('keyup', e => {
-  switch (e.code) {
-    case 'ArrowLeft': case 'KeyA': keys.left = false; break;
-    case 'ArrowRight': case 'KeyD': keys.right = false; break;
-    case 'ArrowDown': case 'KeyS': keys.down = false; break;
-    case 'ArrowUp': case 'KeyW': case 'Space': keys.up = false; break;
-  }
+  const act = actionFor(e.code);
+  if (!act) return;
+  if (act === 'up') keys.up = false;
+  else if (act === 'forward') keys.right = false;
+  else if (act === 'back') keys.left = false;
+  else if (act === 'down') keys.down = false;
 });
 
 /* touch / mouse deck */
@@ -1063,12 +1597,7 @@ document.querySelectorAll('#dpad button[data-k]').forEach(btn => {
   bindHold(btn,
     () => {
       if (k === 'up') {
-        if (F[0] && !F[0].air && !F[0].action && !S.locked && S.mode === 'fight' &&
-          ['idle', 'walk', 'crouch', 'block'].includes(F[0].state)) {
-          F[0].air = true; F[0].vy = 4.4; F[0].state = 'jump'; F[0].stateT = 0;
-          F[0].blocking = false;
-          audio.jump();
-        }
+        jumpNow();
         keys.up = true;
       } else keys[k] = true;
     },
@@ -1078,9 +1607,45 @@ document.querySelectorAll('#dpad button[data-k]').forEach(btn => {
     });
 });
 
+/* analog movement stick */
+(() => {
+  const el = $('#stick'), knob = $('#stickKnob');
+  if (!el || !knob) return;
+  let pid = null;
+  function apply(e) {
+    const r = el.getBoundingClientRect();
+    let dx = (e.clientX - (r.left + r.width / 2)) / (r.width * .42);
+    let dy = (e.clientY - (r.top + r.height / 2)) / (r.height * .42);
+    const len = Math.hypot(dx, dy);
+    if (len > 1) { dx /= len; dy /= len; }
+    knob.style.transform = `translate(calc(-50% + ${dx * r.width * .3}px), calc(-50% + ${dy * r.height * .3}px))`;
+    keys.right = dx > .28;
+    keys.left = dx < -.28;
+    keys.down = dy > .34;
+    const wantUp = dy < -.55;
+    if (wantUp && !keys.up) jumpNow();
+    keys.up = wantUp;
+  }
+  function reset() {
+    pid = null;
+    keys.left = keys.right = keys.down = keys.up = false;
+    knob.style.transform = 'translate(-50%,-50%)';
+  }
+  el.addEventListener('pointerdown', e => {
+    if (pid !== null) return;
+    pid = e.pointerId;
+    try { el.setPointerCapture(pid); } catch (err) { }
+    audio.unlock();
+    apply(e);
+  });
+  el.addEventListener('pointermove', e => { if (e.pointerId === pid) apply(e); });
+  el.addEventListener('pointerup', e => { if (e.pointerId === pid) reset(); });
+  el.addEventListener('pointercancel', e => { if (e.pointerId === pid) reset(); });
+})();
+
 document.querySelectorAll('#acts button[data-a]').forEach(btn => {
   const a = btn.dataset.a;
-  bindHold(btn, () => tryAttack(F[0], a), () => { });
+  bindHold(btn, () => pressAttack(a), () => { });
 });
 
 /* =========================================================
@@ -1111,19 +1676,26 @@ function frame(now) {
   const dt = raw * S.timeScale;
 
   if (S.mode === 'fight' && !S.paused) {
-    if (S.hitstop > 0) {
-      S.hitstop -= raw;
+    if (S.online && S.online.role === 'guest') {
+      netGuestTick(raw);
+      updateHUD();
     } else {
-      if (S.phase === 'battle' && !S.locked) {
-        playerIntent(raw);
-        aiUpdate(F[1], raw);
+      if (S.hitstop > 0) {
+        S.hitstop -= raw;
+      } else {
+        if (S.phase === 'battle' && !S.locked) {
+          playerIntent(raw);
+          if (S.online) netRemoteIntent(raw);
+          else aiUpdate(F[1], raw);
+        }
+        updateFighter(F[0], dt);
+        updateFighter(F[1], dt);
+        separate();
+        updateMatch(dt);
       }
-      updateFighter(F[0], dt);
-      updateFighter(F[1], dt);
-      separate();
-      updateMatch(dt);
+      updateHUD();
+      if (S.online) netHostTick(raw);
     }
-    updateHUD();
   }
 
   // pose + transform
@@ -1155,7 +1727,7 @@ function frame(now) {
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(qualRatio());
   renderer.setSize(w, h, false);
   composer.setSize(w, h);
   bloom.setSize(w, h);
@@ -1165,6 +1737,8 @@ function resize() {
 window.addEventListener('resize', resize);
 
 resize();
+applySettings();
+syncSettingsUI();
 requestAnimationFrame(frame);
 
 window.__mk = {

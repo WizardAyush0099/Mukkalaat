@@ -148,7 +148,11 @@ export function createFX(scene) {
 
 /* ---------------- synthesized audio ---------------- */
 export function createAudio() {
-  let ctx = null, master = null, noiseBuf = null, muted = false;
+  let ctx = null, master = null, noiseBuf = null, muted = false, vol = .5;
+
+  function applyGain() {
+    if (master) master.gain.value = muted ? 0 : vol;
+  }
 
   function init() {
     if (ctx) return;
@@ -156,7 +160,7 @@ export function createAudio() {
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = .5;
+    master.gain.value = muted ? 0 : vol;
     master.connect(ctx.destination);
     const len = Math.floor(ctx.sampleRate * 1.2);
     noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -201,8 +205,17 @@ export function createAudio() {
     unlock,
     toggle() {
       muted = !muted;
-      if (master) master.gain.value = muted ? 0 : .5;
+      applyGain();
       return !muted;
+    },
+    setVolume(v) {
+      vol = Math.max(0, Math.min(1, v));
+      applyGain();
+    },
+    getVolume() { return vol; },
+    setMuted(m) {
+      muted = !!m;
+      applyGain();
     },
     get muted() { return muted; },
     hit(power = 1) {

@@ -62,30 +62,33 @@ export const CHARACTERS = [
   },
   {
     id: 'boss', name: 'BOSS', style: 'SUITED ENFORCER', tag: 'THE DON',
-    stats: { POWER: 9, SPEED: 5, DEFENSE: 9 },
-    blurb: 'Runs the bazaar and the akhada. Grey at the temples, red at the throat, no patience left.',
-    theme: ['#2a0f14', '#d43a3a'], mono: 'बॉ',
+    stats: { POWER: 9, SPEED: 7, DEFENSE: 9 },
+    blurb: 'Sharp-suited officer. Grey hair, grey moustache, red tie, and a stare that ends arguments.',
+    theme: ['#16151a', '#d43a3a'], mono: 'बॉ',
     palette: {
-      skin: 0x9a6a4c, skinShade: 0x7a4c34, lips: 0x86463a, hair: 0xb9b5ad, hairHill: 0xd6d2c8,
-      cloth: 0x1b1a22, clothDark: 0x111016, trim: 0xd9d3c6, gold: 0xc9a24a,
-      wrap: 0xd9d3c6, leather: 0x141218, eye: 0x2c1c13, aura: 0xff3b2a,
-      shirt: 0xe4ded2, tie: 0x8f1520
+      skin: 0xc89672, skinShade: 0xa1704f, lips: 0x7b4a3c, hair: 0x9d978d, hairHill: 0xcac4b8, brow: 0x6a6357,
+      cloth: 0x141419, clothDark: 0x0c0c10, trim: 0xd9d3c7, gold: 0xc0993f,
+      wrap: 0xd9d3c6, leather: 0x0b0a0e, eye: 0x3a2a1a, aura: 0xff2f22,
+      shirt: 0xc3c2c6, tie: 0xc01722
     },
-    build: { height: 1.87, shoulder: 1.04, chest: 1.02, waist: 1.0, hip: .98, muscle: 1.0, depth: .72, head: 1.02, female: false },
-    gear: 'suit', hair: 'slick', facial: 'mustache', age: 'senior'
+    build: { height: 1.86, shoulder: 1.16, chest: 1.1, waist: 1.0, hip: 1.0, muscle: 1.05, depth: .79, head: 1.09, female: false },
+    face: { jaw: .30, jawPow: 2.0, square: 1.25, w: 1.05, d: 1.0, brow: .085, eye: .94, ear: 1.12, cheek: .012, chin: 1.12, jowl: .02, mouth: 0 },
+    gear: 'suit', hair: 'slick', facial: 'mustache', age: 'senior',
+    model: 'Characters/cid_acp_pradhuman_3d_model_free.glb'
   },
   {
-    id: 'daya', name: 'DAYA', style: 'CID BRAWLER', tag: 'SUB-INSPECTOR',
-    stats: { POWER: 7, SPEED: 6, DEFENSE: 8 },
-    blurb: 'CID officer who never files the paperwork. Brown shirt, iron grip, and a watch that stopped years ago.',
-    theme: ['#20170f', '#c58a4a'], mono: 'द',
+    id: 'daya', name: 'DAYA', style: 'CID BRAWLER', tag: 'INSPECTOR',
+    stats: { POWER: 8, SPEED: 6, DEFENSE: 8 },
+    blurb: 'CID inspector in a brown shirt and black jeans. Calm voice, heavy hands.',
+    theme: ['#2a1e14', '#c58a4a'], mono: 'द',
     palette: {
-      skin: 0xa9744f, skinShade: 0x855536, lips: 0x8e4a3c, hair: 0x1a1411, hairHill: 0x2f261f,
-      cloth: 0x6b4a33, clothDark: 0x1d2027, trim: 0xcfb08a, gold: 0xd8b25c,
-      wrap: 0xcfc3ab, leather: 0x131218, eye: 0x2a1a12, aura: 0xffa63a,
-      shirt: 0x6b4a33, tie: 0x2a2118
+      skin: 0xb8835c, skinShade: 0x946646, lips: 0x945244, hair: 0x171310, hairHill: 0x2c2622, brow: 0x140f0c,
+      cloth: 0x6d4a30, clothDark: 0x151821, trim: 0x8a6a4c, gold: 0xd4d0c8,
+      wrap: 0xcfc3ab, leather: 0x101014, eye: 0x2a1a12, aura: 0xffa63a,
+      shirt: 0x6d4a30, tie: 0x2a2118
     },
-    build: { height: 1.81, shoulder: 1.04, chest: .98, waist: .96, hip: 1.0, muscle: 1.04, depth: .71, head: 1.0, female: false },
+    build: { height: 1.82, shoulder: 1.09, chest: .99, waist: 1.03, hip: 1.01, muscle: 1.06, depth: .74, head: 1.11, female: false },
+    face: { jaw: .20, jawPow: 2.6, square: .8, w: 1.04, d: 1.02, brow: .06, eye: 1.12, ear: 1.04, cheek: .028, chin: .95, jowl: .03, mouth: .4 },
     gear: 'shirt', hair: 'wavy', facial: 'stubble'
   }
 ];
@@ -117,13 +120,89 @@ function tube(points, radius, mat, parent, seg = 22, rad = 6) {
   return put(new THREE.TubeGeometry(curve, seg, radius, rad, false), mat, parent);
 }
 
+/* One continuous limb segment: rounded top, tapered shaft with a belly, rounded end.
+   Replaces the old stack of capsules and spheres that read as a string of beads. */
+function limbGeo(rTop, rBot, len, bulge = 0, seg = 26) {
+  const pts = [];
+  const capSteps = 5;
+  for (let i = 0; i <= capSteps; i++) {
+    const a = (i / capSteps) * Math.PI / 2;
+    pts.push(new THREE.Vector2(Math.max(.002, rTop * Math.sin(a)), -rTop * (1 - Math.cos(a))));
+  }
+  const bodyTop = -rTop, bodyBot = -(len - rBot);
+  for (let i = 1; i <= 9; i++) {
+    const t = i / 9;
+    const y = lerp(bodyTop, bodyBot, t);
+    const r = lerp(rTop, rBot, t) + Math.sin(Math.PI * t) * bulge;
+    pts.push(new THREE.Vector2(Math.max(.004, r), y));
+  }
+  for (let i = 1; i <= capSteps; i++) {
+    const a = (i / capSteps) * Math.PI / 2;
+    pts.push(new THREE.Vector2(Math.max(.002, rBot * Math.cos(a)), bodyBot - rBot * Math.sin(a)));
+  }
+  return new THREE.LatheGeometry(pts, seg);
+}
+
+/* Torso as one smooth mesh. Muscles are sculpted into the surface with soft bumps
+   instead of being separate spheres stuck on top, so there are no seams or ball joints. */
+function torsoGeometry(B, torsoPts, bare, seg = 72, rows = 46) {
+  const prof = torsoPts(0);
+  const yA = prof[1].y, yB = prof[prof.length - 2].y;
+  function radiusAt(y) {
+    if (y <= prof[1].y) return prof[1].x;
+    for (let i = 1; i < prof.length - 1; i++) {
+      const a = prof[i], b = prof[i + 1];
+      if (y >= a.y && y <= b.y) {
+        const t = (y - a.y) / Math.max(1e-6, b.y - a.y);
+        return lerp(a.x, b.x, t);
+      }
+    }
+    return prof[prof.length - 2].x;
+  }
+  const verts = [], uvs = [], idx = [];
+  for (let j = 0; j <= rows; j++) {
+    const v = j / rows;
+    const y = lerp(yA, yB, v);
+    for (let i = 0; i <= seg; i++) {
+      const u = i / seg;
+      const th = u * Math.PI * 2;
+      const sn = Math.sin(th), cs = Math.cos(th);
+      const front = Math.max(0, sn), back = Math.max(0, -sn), side = Math.abs(cs);
+      let r = radiusAt(y);
+      const chest = Math.exp(-Math.pow((y - .205) / .065, 2));
+      r += (bare ? .021 : .008) * chest * Math.pow(front, 2.2);
+      r -= (bare ? .008 : .003) * chest * Math.pow(front, 6) * Math.exp(-Math.pow(cs / .3, 2));
+      r += (bare ? .008 : .004) * Math.exp(-Math.pow((y - .075) / .08, 2)) * Math.pow(front, 3);
+      r += (bare ? .011 : .005) * Math.exp(-Math.pow((y - .17) / .1, 2)) * Math.pow(side, 3);
+      r += .012 * Math.exp(-Math.pow((y - .312) / .045, 2)) * Math.pow(side, 1.4);
+      r += (bare ? .013 : .006) * Math.exp(-Math.pow((y + .105) / .06, 2)) * Math.pow(back, 2);
+      r -= (bare ? .007 : .004) * Math.exp(-Math.pow(cs / .22, 2)) * Math.exp(-Math.pow((y - .1) / .2, 2));
+      verts.push(r * cs, y, r * sn * B.depth);
+      uvs.push(u, v);
+    }
+  }
+  const w = seg + 1;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < seg; i++) {
+      const a = j * w + i, b = a + 1, c = a + w, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 /* ---------------- materials ---------------- */
 function makeMaterials(P) {
   const T = tex();
   const skin = new THREE.MeshPhysicalMaterial({
-    color: P.skin, map: T.skin, roughness: .64, metalness: 0,
-    clearcoat: .1, clearcoatRoughness: .7,
-    bumpMap: T.skinBump, bumpScale: .0016, envMapIntensity: .5
+    color: P.skin, map: T.skin, roughness: .72, metalness: 0,
+    clearcoat: .03, clearcoatRoughness: .85,
+    bumpMap: T.skinBump, bumpScale: .0022, envMapIntensity: .36
   });
   const skinDark = new THREE.MeshStandardMaterial({ color: P.skinShade, roughness: .62, envMapIntensity: .5 });
   const lips = new THREE.MeshStandardMaterial({ color: P.lips, roughness: .42, envMapIntensity: .6 });
@@ -146,34 +225,36 @@ function makeMaterials(P) {
   });
   const hair = new THREE.MeshStandardMaterial({ color: P.hair, roughness: .68, bumpMap: T.hairBump, bumpScale: .004, envMapIntensity: .4 });
   const hairLite = new THREE.MeshStandardMaterial({ color: P.hairHill, roughness: .72, envMapIntensity: .3 });
+  const brow = new THREE.MeshStandardMaterial({ color: P.brow ?? P.hair, roughness: .8, envMapIntensity: .25 });
   const eyeWhite = new THREE.MeshStandardMaterial({ color: 0xe9e2d8, roughness: .16, envMapIntensity: 1.1 });
   const iris = new THREE.MeshStandardMaterial({ color: P.eye, roughness: .2, envMapIntensity: 1.1 });
   const black = new THREE.MeshBasicMaterial({ color: 0x09070b });
   const glow = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
   const flash = [skin, skinDark, cloth, cloth2, wrap, hair, trim, shirt, tie];
   flash.forEach(m => { m.emissive = new THREE.Color(0xff3c18); m.emissiveIntensity = 0; });
-  return { skin, skinDark, lips, cloth, cloth2, trim, gold, wrap, leather, hair, hairLite, eyeWhite, iris, black, glow, shirt, tie, flash };
+  return { skin, skinDark, lips, cloth, cloth2, trim, gold, wrap, leather, hair, hairLite, brow, eyeWhite, iris, black, glow, shirt, tie, flash };
 }
 
 /* ---------------- sculpted head ---------------- */
 function buildHead(head, def, M, B) {
   const face = grp(head, 0, 0.115, 0);
   const H = B.head;
+  const FC = def.face || {};
   const skullGeo = new THREE.SphereGeometry(1, 56, 44);
   const pos = skullGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const t = clamp((0.12 - y) / 1.12, 0, 1);
-    // jaw taper + cheekbones
-    let jaw = 1 - 0.34 * Math.pow(t, 1.32);
-    jaw += 0.05 * Math.exp(-Math.pow((y + 0.18) / 0.26, 2));
+    // jaw taper + cheekbones (driven per character: square heavy jaw vs round full face)
+    let jaw = 1 - (FC.jaw ?? 0.34) * Math.pow(t, FC.jawPow ?? 1.32);
+    jaw += 0.05 * Math.exp(-Math.pow((y + 0.18) / 0.26, 2)) * (FC.square ?? 1);
     let X = x * jaw;
     let Z = z;
     if (z > 0) {
       Z = z * (0.97 - 0.13 * t);
       if (y < -0.28) Z += 0.20 * (1 - Math.abs(x) * .85) * Math.pow(clamp((-y - 0.28) / 0.66, 0, 1), 1.35);
       // brow ridge
-      Z += 0.055 * Math.exp(-Math.pow((y - 0.24) / 0.12, 2)) * Math.exp(-Math.pow((Math.abs(x) - 0.4) / 0.42, 2));
+      Z += (FC.brow ?? 0.055) * Math.exp(-Math.pow((y - 0.24) / 0.12, 2)) * Math.exp(-Math.pow((Math.abs(x) - 0.4) / 0.42, 2));
       // eye socket recess
       Z -= 0.028 * Math.exp(-Math.pow((Math.abs(x) - 0.38) / 0.22, 2)) * Math.exp(-Math.pow((y - 0.10) / 0.15, 2));
       // temple hollow
@@ -183,7 +264,7 @@ function buildHead(head, def, M, B) {
     }
     // temples narrower at the top
     X *= 1 - 0.05 * Math.max(0, y - 0.25);
-    pos.setXYZ(i, X * 0.0975 * H, y * 0.124 * H, Z * 0.103 * H);
+    pos.setXYZ(i, X * 0.0975 * H * (FC.w ?? 1), y * 0.124 * H, Z * 0.103 * H * (FC.d ?? 1));
   }
   skullGeo.computeVertexNormals();
   const skull = put(skullGeo, M.skin, face);
@@ -192,36 +273,44 @@ function buildHead(head, def, M, B) {
   const occiput = put(sph(.082, 18), M.skin, face, [0, -.01, -.045], [0, 0, 0], [1, 1.05, .9]);
 
   // cheekbones & jaw corners
+  const fuller = 1 + (FC.cheek ?? 0) * 6;
   for (const s of [-1, 1]) {
-    put(sph(.03, 14), M.skin, face, [s * .055, -.005, .062], [0, 0, 0], [.95, .75, .55]);
+    put(sph(.03 * fuller, 14), M.skin, face, [s * .055, -.012, .058], [0, 0, 0], [.95, .78, .6]);
     put(sph(.032, 14), M.skin, face, [s * .052, -.06, .045], [0, 0, 0], [.9, .95, .7]);
   }
   // chin
-  put(sph(.03, 16), M.skin, face, [0, -.105, .062], [0, 0, 0], [1.1, .8, .75]);
+  put(sph(.026, 16), M.skin, face, [0, -.106, .068], [0, 0, 0], [1.15 * (FC.chin ?? 1), .72, .7]);
+  if (FC.jowl) {
+    // heavy under-jaw and a soft double chin
+    put(sph(.052, 18), M.skin, face, [0, -.098, .034], [0, 0, 0], [1.3, .58, 1.02], false);
+    put(sph(.042, 16), M.skin, face, [0, -.118, .018], [0, 0, 0], [1.42, .5, .95], false);
+  }
 
   /* eyes */
-  const eyeY = .012, eyeX = .038, eyeZ = .079;
+  const eyeY = .012, eyeX = .037, eyeZ = .0905;
   for (const s of [-1, 1]) {
     const eye = grp(face, s * eyeX, eyeY, eyeZ);
-    eye.rotation.y = s * -0.16;
-    put(sph(.0182, 20), M.eyeWhite, eye, [0, 0, 0], [0, 0, 0], [1, .9, .82], false);
-    put(new THREE.CircleGeometry(.0096, 22), M.iris, eye, [0, 0, .0152], [0, 0, 0], null, false);
-    put(new THREE.CircleGeometry(.0046, 18), M.black, eye, [0, 0, .0158], [0, 0, 0], null, false);
+    eye.rotation.y = s * -0.14;
+    eye.scale.setScalar(FC.eye ?? 1);
+    put(sph(.0175, 22), M.eyeWhite, eye, [0, 0, -.002], [0, 0, 0], [1, .8, .78], false);
+    put(new THREE.CircleGeometry(.0082, 22), M.iris, eye, [0, -.001, .0132], [0, 0, 0], null, false);
+    put(new THREE.CircleGeometry(.0035, 18), M.black, eye, [0, -.001, .0137], [0, 0, 0], null, false);
     // wet catchlight + limbal ring
-    put(sph(.0022, 8), M.glow, eye, [-s * .0035, .0035, .0172], [0, 0, 0], null, false);
-    put(new THREE.TorusGeometry(.0086, .0011, 4, 20), M.black, eye, [0, 0, .0156], [0, 0, 0], [1, 1, 1], false);
-    // upper/lower lids
-    put(new THREE.TorusGeometry(.0192, .0034, 6, 16, Math.PI), M.skinDark, eye, [0, .0005, .001], [0, 0, .04], [1, .8, 1], false);
-    put(new THREE.TorusGeometry(.0186, .0022, 6, 16, Math.PI), M.skinDark, eye, [0, 0, .001], [0, 0, Math.PI], [1, .8, 1], false);
+    put(sph(.0016, 8), M.glow, eye, [-s * .0026, .0018, .0134], [0, 0, 0], null, false);
+    put(new THREE.TorusGeometry(.0064, .0008, 4, 20), M.black, eye, [0, -.001, .0128], [0, 0, 0], [1, 1, 1], false);
+    // upper/lower lids, wrapping the eyeball
+    put(new THREE.TorusGeometry(.017, .0028, 6, 16, Math.PI), M.skin, eye, [0, .001, .002], [-.18, 0, .04], [1, .82, 1.05], false);
+    put(new THREE.TorusGeometry(.0166, .0016, 6, 16, Math.PI), M.skinDark, eye, [0, -.001, .002], [.12, 0, Math.PI], [1, .82, 1.05], false);
     // eyebrows
     tube([
-      [s * .012, .052, .086], [s * .032, .058, .089], [s * .055, .054, .082], [s * .07, .045, .068]
-    ], .0055, M.hair, face, 14, 5);
+      [s * .01, .038, .0955], [s * .03, .044, .0975], [s * .052, .041, .092], [s * .068, .034, .079]
+    ], .0062, M.brow, face, 14, 5);
     // eyelash edge
     put(new THREE.TorusGeometry(.0198, .0016, 5, 14, Math.PI), M.hair, eye, [0, .001, .002], [0, 0, .04], [1, .8, 1], false);
     // ear
     const ear = grp(face, s * .097, -.002, .004);
     ear.rotation.set(0, s * .28, s * .12);
+    ear.scale.setScalar(FC.ear ?? 1);
     put(sph(.021, 14), M.skin, ear, [0, 0, 0], [0, 0, 0], [.42, 1.25, .85]);
     put(new THREE.TorusGeometry(.017, .0055, 6, 14, Math.PI * 1.4), M.skinDark, ear, [0, 0, .008], [0, s * 1.2, 0], [1, 1.1, 1]);
     put(sph(.008, 10), M.skinDark, ear, [0, -.004, .006], [0, 0, 0], [.5, .7, .4]);
@@ -230,13 +319,13 @@ function buildHead(head, def, M, B) {
   }
 
   /* nose */
-  put(sph(.016, 18), M.skin, face, [0, .03, .086], [0.32, 0, 0], [.62, 1.5, .78]);
-  put(sph(.0175, 18), M.skin, face, [0, -.012, .099], [0, 0, 0], [1, .78, .9]);
+  put(sph(.0135, 18), M.skin, face, [0, .026, .09], [0.32, 0, 0], [.58, 1.5, .72]);
+  put(sph(.0142, 18), M.skin, face, [0, -.010, .099], [0, 0, 0], [.92, .72, .82]);
   for (const s of [-1, 1]) {
-    put(sph(.0125, 14), M.skin, face, [s * .0165, -.019, .088], [0, 0, 0], [1, .7, .85]);
-    put(sph(.0055, 10), M.skinDark, face, [s * .0115, -.028, .094], [0, 0, 0], [1.1, .6, .5], false);
+    put(sph(.0098, 14), M.skin, face, [s * .0142, -.017, .089], [0, 0, 0], [1, .66, .8]);
+    put(sph(.0042, 10), M.skinDark, face, [s * .0098, -.0245, .094], [0, 0, 0], [1.1, .6, .5], false);
   }
-  put(sph(.009, 10), M.skinDark, face, [0, -.024, .099], [0, 0, 0], [1.4, .5, .5], false);
+  put(sph(.0072, 10), M.skinDark, face, [0, -.021, .099], [0, 0, 0], [1.4, .5, .5], false);
 
   /* nose bridge, philtrum, folds — the small planes that make a face read */
   tube([[0, .072, .073], [0, .042, .085], [0, .018, .092]], .0105, M.skin, face, 10, 6);
@@ -252,30 +341,53 @@ function buildHead(head, def, M, B) {
     for (const s of [-1, 1]) {
       tube([[s * .058, .022, .081], [s * .063, .03, .075], [s * .061, .038, .069]], .0017, M.skinDark, face, 6, 4);
       tube([[s * .05, -.012, .082], [s * .059, -.02, .074], [s * .059, -.03, .069]], .0017, M.skinDark, face, 6, 4);
+      // deep nasolabial fold from the nose wing to the moustache
+      tube([[s * .024, -.026, .084], [s * .036, -.043, .08], [s * .041, -.06, .075], [s * .039, -.075, .066]], .0024, M.skinDark, face, 12, 4);
       put(sph(.016, 12), M.skin, face, [s * .043, .05, .078], [0, 0, 0], [1.5, .45, .55], false);
+      // slack jaw and a creased cheek, kept shallow so it stays smooth
+      put(sph(.026, 16), M.skin, face, [s * .055, -.058, .05], [0, 0, 0], [.7, .82, .62], false);
+      tube([[s * .05, -.038, .066], [s * .056, -.05, .058], [s * .048, -.06, .052]], .0016, M.skinDark, face, 8, 4);
+    }
+  } else if (def.id === 'daya') {
+    // fuller, rounder cheeks and a warm brow
+    for (const s of [-1, 1]) {
+      put(sph(.026, 16), M.skin, face, [s * .047, -.014, .06], [0, 0, 0], [1.0, .8, .62], false);
+      put(sph(.022, 14), M.skin, face, [s * .042, .046, .072], [0, 0, 0], [1.35, .5, .6], false);
+      tube([[s * .026, -.03, .084], [s * .036, -.043, .08], [s * .04, -.055, .075]], .0019, M.skinDark, face, 8, 4);
     }
   }
 
   /* mouth */
-  const mouthY = -.062;
-  put(sph(.016, 16), M.lips, face, [0, mouthY + .008, .089], [0, 0, 0], [1.25, .42, .55]);
-  put(sph(.018, 16), M.lips, face, [0, mouthY - .004, .088], [0, 0, 0], [1.1, .5, .55]);
-  put(new THREE.BoxGeometry(.035, .0026, .004), M.skinDark, face, [0, mouthY + .002, .095], [0, 0, 0], null, false);
+  const mouthY = -.062, smile = FC.mouth || 0;
+  put(sph(.0155, 16), M.lips, face, [0, mouthY + .008, .094], [0, 0, 0], [1.2, .4, .5]);
+  put(sph(.0175, 16), M.lips, face, [0, mouthY - .004, .093], [0, 0, 0], [1.05, .48, .5]);
+  if (smile > .05) {
+    // lifted mouth line, corners turned up
+    tube([[-.03, mouthY - .002 + smile * .013, .092], [-.014, mouthY - .007, .097], [0, mouthY - .008, .098],
+      [.014, mouthY - .007, .097], [.03, mouthY - .002 + smile * .013, .092]], .0022, M.skinDark, face, 18, 4);
+  } else {
+    put(new THREE.BoxGeometry(.032, .0024, .004), M.skinDark, face, [0, mouthY + .002, .099], [0, 0, 0], null, false);
+  }
   for (const s of [-1, 1]) {
-    put(sph(.006, 8), M.skinDark, face, [s * .026, mouthY + .004, .086], [0, 0, 0], [1, .6, .5], false);
+    put(sph(.0055, 8), M.skinDark, face, [s * .025, mouthY + .004 + smile * .014, .092], [0, 0, 0], [1, .6, .5], false);
   }
 
   /* facial hair */
   if (def.facial === 'mustache') {
+    const senior = def.age === 'senior';
+    const r = senior ? .0078 : .0072;
+    const spread = senior ? .045 : .046;
     for (const s of [-1, 1]) {
       tube([
-        [0, mouthY + .024, .097], [s * .022, mouthY + .026, .097], [s * .04, mouthY + .02, .09], [s * .05, mouthY + .002, .078]
-      ], .0072, M.hair, face, 16, 6);
-      put(sph(.009, 10), M.hair, face, [s * .05, mouthY + .001, .078], [0, 0, 0], [1, .8, .9], false);
+        [0, mouthY + .028, .096], [s * .022, mouthY + .029, .097],
+        [s * (spread * .82), mouthY + .024, .095], [s * spread, mouthY + .014, .088]
+      ], r, M.hair, face, 18, 6);
+      put(sph(r * 1.15, 10), M.hair, face, [s * spread, mouthY + .012, .087], [0, 0, 0], [1, .8, .9], false);
+      if (senior) put(sph(r * .7, 8), M.hair, face, [s * (spread * 1.02), mouthY - .004, .083], [0, 0, 0], [1, .7, .8], false);
     }
-    put(sph(.013, 12), M.hair, face, [0, mouthY + .026, .092], [0, 0, 0], [1.7, .7, .7], false);
-    // stubble shadow on the jaw
-    for (let i = 0; i < 10; i++) {
+    put(sph(senior ? .0145 : .013, 12), M.hair, face, [0, mouthY + .03, .094], [0, 0, 0], [1.8, .7, .7], false);
+    // stubble shadow on the jaw, for the younger moustached fighter only
+    if (!senior) for (let i = 0; i < 10; i++) {
       const a = -1 + i * .22;
       put(sph(.011, 8), M.hair, face, [Math.sin(a) * .065, -.09 - Math.cos(a) * .012, .045 + Math.cos(a) * .025], [0, 0, 0], [1, .7, .6], false);
     }
@@ -299,11 +411,12 @@ function buildHead(head, def, M, B) {
       [0, mouthY + .024, .097], [-.026, mouthY + .024, .096], [-.044, mouthY + .012, .086]
     ], .008, M.hair, face, 12, 5);
   } else if (def.facial === 'stubble') {
-    for (let i = 0; i < 12; i++) {
-      const a = -1.15 + i * .21;
-      put(sph(.010, 8), M.hair, face, [Math.sin(a) * .062, -.088 - Math.cos(a) * .012, .048 + Math.cos(a) * .022], [0, 0, 0], [1, .62, .45], false);
+    // soft beard shadow rather than dots
+    for (let i = 0; i < 18; i++) {
+      const a = -1.28 + i * .145;
+      put(sph(.009, 8), M.skinShade, face, [Math.sin(a) * .064, -.088 - Math.cos(a) * .012, .047 + Math.cos(a) * .024], [0, 0, 0], [1.2, .42, .32], false);
     }
-    for (const s of [-1, 1]) put(sph(.0115, 8), M.hair, face, [s * .026, -.048, .088], [0, 0, 0], [1.15, .4, .35], false);
+    for (const s of [-1, 1]) put(sph(.012, 8), M.skinShade, face, [s * .028, -.047, .088], [0, 0, 0], [1.25, .3, .3], false);
   } else if (def.facial === 'bindi') {
     put(sph(.0045, 10), new THREE.MeshStandardMaterial({ color: 0xa8232a, roughness: .4 }), face, [0, .048, .093], [0, 0, 0], [1, 1.1, .4], false);
     put(sph(.0022, 8), M.gold, face, [0, .062, .087], [0, 0, 0], null, false);
@@ -348,28 +461,53 @@ function buildHair(height, style, head, face, M, def) {
     tube([[.03, .085, .05], [.05, .04, .07], [.035, -.02, .075]], .006, M.hair, g, 10, 4);
     return { braid };
   } else if (style === 'wavy') {
-    put(new THREE.SphereGeometry(.1015, 40, 26, 0, Math.PI * 2, 0, Math.PI * .58), M.hair, g, [0, .012, -.006], [0, 0, 0], [1.04 * H, 1.0, 1.06], false);
+    // thick black hair with volume on top and a side part
+    put(new THREE.SphereGeometry(.107, 46, 32, 0, Math.PI * 2, 0, Math.PI * .66), M.hair, g, [0, .008, -.012], [.04, 0, 0], [1.08 * H, 1.32, 1.1], false);
+    // crown volume
     for (let i = 0; i < 8; i++) {
-      const a = -1.7 + i * .48;
-      put(sph(.026, 12), M.hair, g, [Math.sin(a) * .062, .098 - Math.abs(a) * .012, Math.cos(a) * .062], [0, a * .5, a * .3], [1.25, .85, 1.05], false);
+      const a = -1.6 + i * .46;
+      put(sph(.04, 16), M.hair, g, [Math.sin(a) * .056, .112 - Math.abs(a) * .01, Math.cos(a) * .058], [0, a * .5, a * .2], [1.15, .9, 1.05], false);
     }
+    // side part, then a thick lock sweeping across the brow
+    put(new THREE.BoxGeometry(.006, .06, .014), M.skinDark, g, [-.05, .098, .052], [.55, 0, -.16], null, false);
     for (let i = 0; i < 5; i++) {
-      tube([[.006 + i * .011, .098, .052], [.03 + i * .01, .078, .08], [.058 + i * .006, .052, .07]], .011, M.hair, g, 10, 5);
+      const t = i / 4;
+      put(sph(.036 - t * .004, 16), i === 0 ? M.hairLite : M.hair, g,
+        [-.07 + t * .11, .092 - t * .016, .056 + t * .012],
+        [.3, t * .3, -.42 + t * .55], [1.2, .66, .82], false);
     }
-    for (const s of [-1, 1]) put(sph(.017, 10), M.hair, g, [s * .089, .02, .035], [0, 0, 0], [.5, 1.25, .8], false);
+    // full sides, sideburns and a thick nape
+    for (const s of [-1, 1]) {
+      put(sph(.032, 14), M.hair, g, [s * .09, .014, .006], [0, 0, 0], [.6, 1.18, 1.02], false);
+      put(sph(.026, 12), M.hair, g, [s * .082, -.03, .02], [0, 0, 0], [.62, 1.0, .9], false);
+      put(sph(.034, 14), M.hair, g, [s * .068, -.02, -.052], [0, 0, 0], [.8, .96, .88], false);
+    }
+    put(sph(.06, 18), M.hair, g, [0, -.03, -.084], [0, 0, 0], [1.12, .86, .74], false);
     return {};
   } else {
-    // slicked back silver
-    put(new THREE.SphereGeometry(.099, 40, 26, 0, Math.PI * 2, 0, Math.PI * 0.5), M.hair, g, [0, .022, -.016], [0, 0, 0], [1.02 * H, 1.02, 1.04], false);
-    for (let i = 0; i < 7; i++) {
-      const x = -.06 + i * .02;
-      tube([[x, .1, .055], [x * 1.1, .105, .0], [x * 1.15, .075, -.065], [x * 1.2, .03, -.088]], .008, M.hairLite, g, 14, 5);
+    // grey hair: full and swept back off the forehead, cropped at the sides
+    put(new THREE.SphereGeometry(.1025, 44, 30, 0, Math.PI * 2, 0, Math.PI * 0.6), M.hair, g, [0, .01, -.012], [.06, 0, 0], [1.04 * H, 1.34, 1.08], false);
+    // swept-back mass over the forehead, lifted on the parted side
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4;
+      put(sph(.033 - t * .003, 16), i < 2 ? M.hairLite : M.hair, g,
+        [-.048 + t * .096, .086 + (1 - t) * .01, .05 - t * .01],
+        [.34 - t * .1, 0, -.2 + t * .26], [1.2, .62, .9], false);
     }
-    // beard jaw strip
+    // side part
+    put(new THREE.BoxGeometry(.006, .05, .012), M.skinDark, g, [.042, .1, .045], [.5, 0, .2], null, false);
+    // short sides, temples and a cropped nape
     for (const s of [-1, 1]) {
-      tube([[s * .085, .02, .01], [s * .085, -.03, .035], [s * .065, -.08, .055], [s * .03, -.105, .075]], .014, M.hair, g, 14, 5);
+      put(sph(.05, 18), M.hair, g, [s * .085, .008, -.012], [0, 0, 0], [.6, 1.02, 1.0], false);
+      put(sph(.044, 16), M.hair, g, [s * .062, -.014, -.066], [0, 0, 0], [.72, .92, .82], false);
+      put(sph(.026, 12), M.hair, g, [s * .07, .052, .046], [0, 0, .3], [.72, .5, .8], false);
     }
-    put(sph(.036, 14), M.hair, g, [0, -.115, .062], [0, 0, 0], [1.2, .85, .8], false);
+    put(sph(.074, 20), M.hair, g, [0, -.012, -.078], [0, 0, 0], [1.14, .8, .74], false);
+    // combed ridges
+    for (let i = 0; i < 6; i++) {
+      const t = i / 5;
+      put(sph(.028, 14), M.hairLite, g, [-.062 + t * .11, .118 - Math.abs(t - .5) * .012, .022 - t * .03], [.2, 0, 0], [.45, .3, 1.4], false);
+    }
   }
   return {};
 }
@@ -859,7 +997,7 @@ export function buildFighter(def) {
   const spine = grp(hips, 0, .06, 0);
   const chest = grp(spine, 0, .20, 0);
   const neck = grp(chest, 0, .27, 0);
-  const head = grp(neck, 0, .06, 0);
+  const head = grp(neck, 0, .035, 0);
 
   /* --- torso --- */
   const TORSO = [
@@ -872,39 +1010,48 @@ export function buildFighter(def) {
     return new THREE.Vector2(Math.max(.02, (r + inflate) * f), y);
   });
 
-  const bare = def.gear === 'pehelwan';
-  put(new THREE.LatheGeometry(torsoPts(0), 56), M.skin, spine, null, null, [1, 1, B.depth]);
-  put(sph(.155, 24), M.skin, hips, [0, -.055, 0], [0, 0, 0], [1.0, .8, B.depth * 1.05]);
-
-  // muscular definition
-  if (bare) {
-    for (const s of [-1, 1]) {
-      put(sph(.078 * B.muscle, 20), M.skin, spine, [s * .082, .215, .125], [.22, s * -.12, 0], [1.2, .85, .38]);
-      put(sph(.028, 12), M.skin, spine, [s * .082, .202, .146], [0, 0, 0], [.7, .7, .6]);
-      put(sph(.034, 12), M.skin, spine, [s * .145, .175, .04], [0, 0, s * -.2], [.55, 1.1, .9]); // serratus
-      put(sph(.03, 12), M.skin, spine, [s * .09, .32, .03], [0, 0, 0], [1.5, .6, .9]); // trap
-    }
-    for (let i = 0; i < 3; i++) {
-      for (const s of [-1, 1]) {
-        put(sph(.026, 12), M.skin, spine, [s * .038, .115 - i * .048, .115 - i * .002], [0, 0, 0], [1.35, .72, .32]);
+  // front surface depth of the torso at a height (spine-relative), so garment
+  // details such as ties and plackets sit on the cloth instead of sinking into it
+  const zScale = B.depth * 1.05;
+  function frontZ(y, inflate = 0, extra = .006) {
+    const p = torsoPts(inflate);
+    let r = p[1].x;
+    for (let i = 1; i < p.length - 1; i++) {
+      const a = p[i], b = p[i + 1];
+      if (y >= a.y && y <= b.y) {
+        const t = (y - a.y) / Math.max(1e-6, b.y - a.y);
+        r = lerp(a.x, b.x, t);
+        break;
       }
     }
-    put(sph(.014, 10), M.skinDark, spine, [0, -.005, .107], [0, 0, 0], [.6, .8, .35], false);
-    tube([[-.02, .312, .072], [-.09, .298, .062], [-.155, .278, .04]], .0085, M.skin, spine, 12, 5);
-    tube([[.02, .312, .072], [.09, .298, .062], [.155, .278, .04]], .0085, M.skin, spine, 12, 5);
-    // back muscles
-    for (const s of [-1, 1]) {
-      put(sph(.075, 16), M.skin, spine, [s * .085, .235, -.095], [0, 0, 0], [1.15, 1.2, .5]);
-      put(sph(.06, 14), M.skin, spine, [s * .13, .15, -.05], [0, 0, 0], [.55, 1.35, .7]);
+    return r * zScale + extra;
+  }
+
+  const bare = def.gear === 'pehelwan';
+  const mus = B.muscle;
+  put(torsoGeometry(B, torsoPts, bare), M.skin, spine);
+  put(sph(.148, 24), M.skin, hips, [0, -.055, 0], [0, 0, 0], [1.0, .82, B.depth * 1.05]);
+  // dark under-layer so no bare skin can peek through a seam in a dressed fighter
+  if (def.gear === 'suit' || def.gear === 'shirt') {
+    put(new THREE.LatheGeometry(torsoPts(.012), 48), M.cloth2, spine, null, null, [1, 1, zScale]);
+    put(sph(.152, 22), M.cloth2, hips, [0, -.055, 0], [0, 0, 0], [1.0, .84, B.depth * 1.1]);
+  }
+
+  // definition lines only: the muscle volume is sculpted into the torso mesh itself
+  if (bare) {
+    tube([[0, .268, .123], [0, .234, .129], [0, .2, .127], [0, .168, .117]], .0028, M.skinDark, spine, 16, 4);
+    for (let i = 0; i < 2; i++) {
+      tube([[-.04, .118 - i * .045, .119], [0, .114 - i * .045, .126], [.04, .118 - i * .045, .119]], .0022, M.skinDark, spine, 18, 4);
     }
   }
 
   // neck
-  put(cyl(.056, .07, .16, 20), M.skin, neck, [0, .03, .01], [0, 0, 0], [1, 1, .95]);
+  put(cyl(.054, .069, .125, 22), M.skin, neck, [0, .006, .008], [0, 0, 0], [1, 1, .96]);
   for (const s of [-1, 1]) tube([[s * .03, .02, .05], [s * .05, .09, .03], [s * .055, .14, .0]], .009, M.skin, neck, 10, 5);
 
   const face = buildHead(head, def, M, B);
   buildHair(B.height, def.hair, head, face, M, def);
+  head.scale.setScalar(1.12);
 
   /* --- arms --- */
   const hands = {}, wrists = {};
@@ -912,16 +1059,11 @@ export function buildFighter(def) {
     const s = side > 0 ? 1 : -1;
     const key = side > 0 ? 'L' : 'R';
     const sh = grp(chest, s * .205 * B.shoulder, .235, 0);
-    put(sph(.074 * B.muscle, 20), M.skin, sh, [0, .004, 0], [0, 0, 0], [1.06, 1.12, 1.0]);
-    put(cap(.053 * B.muscle, .195, 12), M.skin, sh, [0, -.115, 0]);
-    put(sph(.049 * B.muscle, 16), M.skin, sh, [0, -.10, .014], [0, 0, 0], [1, .92, 1.05]);
-    put(sph(.047 * B.muscle, 14), M.skin, sh, [0, -.145, -.02], [0, 0, 0], [.92, 1.15, .92]);
+    put(limbGeo(.065 * mus, .047 * mus, .305, .01 * mus), M.skin, sh, [0, -.004, 0], null, [1, 1, .96]);
 
     const el = grp(sh, 0, -.30, 0);
-    put(sph(.056, 16), M.skin, el);
-    put(cyl(.052, .036, .21, 18), M.skin, el, [0, -.12, 0], [0, 0, 0], [1, 1, .95]);
-    put(sph(.05, 14), M.skin, el, [0, -.065, .006], [0, 0, 0], [1.02, 1.25, 1.0]);
-    put(sph(.036, 12), M.skin, el, [0, -.245, .004], [0, 0, 0], [1, 1, .95]);
+    put(sph(.047, 22), M.skin, el, [0, 0, 0], [0, 0, 0], [1, .94, .96]);
+    put(limbGeo(.047, .034, .265, .007), M.skin, el, [0, .006, 0]);
     const wr = grp(el, 0, -.285, 0);
     put(cyl(.036, .031, .05, 14), M.skin, wr, [0, .012, 0]);
     put(sph(.037, 12), M.skin, wr, [0, -.02, 0], [0, 0, 0], [1, .9, .92]);
@@ -932,20 +1074,25 @@ export function buildFighter(def) {
       put(new THREE.TorusGeometry(.076, .009, 6, 16), M.trim, sh, [0, -.15, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
       put(cyl(.049, .04, .10, 16), M.wrap, el, [0, -.19, 0], [0, 0, 0], [1, 1, 1]);
     } else if (def.gear === 'sherwani') {
-      put(cyl(.078, .062, .29, 18), M.cloth, sh, [0, -.15, 0], [0, 0, 0], [1, 1, 1]);
-      put(cyl(.06, .046, .26, 16), M.cloth, el, [0, -.13, 0], [0, 0, 0], [1, 1, 1]);
-      put(new THREE.TorusGeometry(.048, .011, 6, 16), M.gold, el, [0, -.255, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
+      put(cyl(.078, .064, .32, 20), M.cloth, sh, [0, -.145, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.062, .048, .29, 18), M.cloth, el, [0, -.132, 0], [0, 0, 0], [1, 1, 1]);
+      put(new THREE.TorusGeometry(.049, .011, 6, 16), M.gold, el, [0, -.268, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
     } else if (def.gear === 'suit') {
-      put(cyl(.072, .058, .28, 18), M.cloth, sh, [0, -.145, 0], [0, 0, 0], [1, 1, 1]);
-      put(cyl(.056, .043, .26, 16), M.cloth, el, [0, -.13, 0], [0, 0, 0], [1, 1, 1]);
-      put(cyl(.044, .043, .045, 16), M.shirt, wr, [0, -.003, 0], [0, 0, 0], [1, 1, 1], false);
-      put(sph(.0075, 8), M.gold, wr, [0, -.006, .042], [0, 0, 0], [1, 1, .6], false);
+      put(cyl(.068, .057, .315, 20), M.cloth, sh, [0, -.143, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.059, .045, .29, 18), M.cloth, el, [0, -.132, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.0415, .0405, .05, 16), M.shirt, wr, [0, -.004, 0], [0, 0, 0], [1, 1, 1], false);
+      put(sph(.0055, 8), M.cloth2, wr, [0, -.006, .040], [0, 0, 0], [1, 1, .5], false);
     } else if (def.gear === 'shirt') {
-      put(cyl(.081, .068, .17, 18), M.cloth, sh, [0, -.078, 0], [0, 0, 0], [1, 1, 1]);
-      put(new THREE.TorusGeometry(.067, .009, 6, 16), M.cloth, sh, [0, -.158, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
+      // sleeve rolled to just below the elbow, with a soft cap over the deltoid
+      put(sph(.064, 18), M.cloth, chest, [s * .205 * B.shoulder, .233, 0], [0, 0, 0], [1.05, .78, 1.0], false);
+      put(cyl(.071, .064, .3, 20), M.cloth, sh, [0, -.15, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.062, .064, .052, 18), M.cloth, el, [0, -.036, 0], [0, 0, 0], [1, 1, 1]);
+      put(new THREE.TorusGeometry(.064, .011, 8, 20), M.cloth, el, [0, -.012, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
+      // brushed-steel watch on his left wrist
       if (side > 0) {
-        put(new THREE.TorusGeometry(.042, .008, 5, 14), M.leather, wr, [0, -.004, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
-        put(cyl(.017, .017, .007, 12), M.gold, wr, [0, -.004, .04], [Math.PI / 2, 0, 0], null, false);
+        put(new THREE.TorusGeometry(.0375, .008, 6, 18), M.leather, wr, [0, -.004, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
+        put(cyl(.0135, .0135, .006, 16), M.gold, wr, [0, -.004, .04], [Math.PI / 2, 0, 0], null, false);
+        put(sph(.0028, 8), M.cloth2, wr, [0, -.004, .044], [0, 0, 0], [1, 1, .3], false);
       }
     } else {
       // forearm wraps
@@ -972,13 +1119,11 @@ export function buildFighter(def) {
   function buildLeg(side) {
     const s = side > 0 ? 1 : -1;
     const hip = grp(hips, s * .105 * B.hip, -.03, 0);
-    put(sph(.093 * B.muscle, 18), M.skin, hip, [0, -.01, 0], [0, 0, 0], [1, .98, 1]);
-    put(cyl(.093 * B.muscle, .064, .42, 22), M.skin, hip, [0, -.225, 0], [0, 0, 0], [1, 1, .98]);
-    put(sph(.075, 16), M.skin, hip, [0, -.19, -.012], [0, 0, 0], [.95, 1.15, 1.0]);
+    put(sph(.093 * B.muscle, 22), M.skin, hip, [0, -.012, 0], [0, 0, 0], [1, .94, 1]);
+    put(limbGeo(.092 * B.muscle, .066, .43, .016 * B.muscle), M.skin, hip, [0, -.018, 0]);
     const kn = grp(hip, 0, -.45, 0);
-    put(sph(.071, 16), M.skin, kn, [0, 0, .006], [0, 0, 0], [1, 1, .95]);
-    put(cyl(.063, .039, .40, 20), M.skin, kn, [0, -.215, 0], [0, 0, 0], [1, 1, .95]);
-    put(sph(.05, 14), M.skin, kn, [0, -.105, -.024], [0, 0, 0], [.88, 1.45, .92]);
+    put(sph(.06, 22), M.skin, kn, [0, 0, .004], [0, 0, 0], [1, .95, .94]);
+    put(limbGeo(.061, .037, .415, .014), M.skin, kn, [0, .008, 0]);
     const an = grp(kn, 0, -.43, 0);
     put(sph(.045, 14), M.skin, an);
     const dress = def.gear === 'sherwani' || def.gear === 'suit' || def.gear === 'shirt';
@@ -1014,8 +1159,8 @@ export function buildFighter(def) {
       put(cyl(.095, .062, .42, 18), M.cloth2, hip, [0, -.225, 0], [0, 0, 0], [1, 1, 1]);
       put(cyl(.058, .036, .40, 16), M.cloth2, kn, [0, -.215, 0], [0, 0, 0], [1, 1, 1]);
     } else {
-      put(cyl(.102, .078, .44, 18), M.cloth2, hip, [0, -.225, 0], [0, 0, 0], [1, 1, 1]);
-      put(cyl(.072, .054, .40, 16), M.cloth2, kn, [0, -.215, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.121, .088, .55, 22), M.cloth2, hip, [0, -.2, 0], [0, 0, 0], [1, 1, 1]);
+      put(cyl(.083, .058, .415, 20), M.cloth2, kn, [0, -.206, 0], [0, 0, 0], [1, 1, 1]);
     }
     return { hip, kn, an };
   }
@@ -1023,8 +1168,8 @@ export function buildFighter(def) {
 
   /* --- garments --- */
   if (def.gear === 'pehelwan') {
-    put(cyl(.172, .168, .075, 24), M.cloth, hips, [0, -.02, 0], [0, 0, 0], [1, 1, B.depth * 1.06]);
-    put(new THREE.TorusGeometry(.168, .016, 8, 32), M.trim, hips, [0, .015, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.02]);
+    put(cyl(.158, .152, .075, 24), M.cloth, hips, [0, -.02, 0], [0, 0, 0], [1, 1, B.depth * 1.06]);
+    put(new THREE.TorusGeometry(.153, .012, 8, 32), M.trim, hips, [0, .012, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.02]);
     // sash knot + tails
     put(sph(.032, 12), M.trim, hips, [.12, .005, .09], [0, 0, 0], [1, .8, 1]);
     const tail = grp(hips, .14, -.01, .08);
@@ -1038,62 +1183,70 @@ export function buildFighter(def) {
     put(new THREE.LatheGeometry(pts, 56), M.cloth, spine, null, null, [1, 1, B.depth * 1.05]);
     // structured shoulders
     for (const s of [-1, 1]) {
-      put(sph(.09, 18), M.cloth, chest, [s * .205 * B.shoulder, .245, 0], [0, 0, 0], [1.12, .85, 1.08], false);
+      put(sph(.066, 20), M.cloth, chest, [s * .203 * B.shoulder, .243, 0], [0, 0, 0], [1.14, .7, 1.04], false);
     }
-    // shirt V + collar
-    const sShape = new THREE.Shape();
-    sShape.moveTo(-.052, .352); sShape.lineTo(.052, .352); sShape.lineTo(0, .13); sShape.lineTo(-.052, .352);
-    put(new THREE.ShapeGeometry(sShape), M.shirt, spine, [0, 0, .158], [0, 0, 0], null, false);
+    // trouser seat under the jacket skirt
+    put(sph(.156, 28), M.cloth2, hips, [0, -.06, 0], [0, 0, 0], [1.04, .92, B.depth * 1.14]);
+    // shirt placket showing between the jacket edges
+    put(new THREE.BoxGeometry(.038, .2, .012), M.shirt, spine, [0, .235, frontZ(.235, .034) + .001], [-.2, 0, 0], null, false);
     for (const s of [-1, 1]) {
-      put(new THREE.BoxGeometry(.05, .08, .016), M.shirt, neck, [s * .022, .008, .06], [.12, s * .55, s * .34], null, false);
+      put(new THREE.BoxGeometry(.03, .048, .012), M.shirt, neck, [s * .016, .002, .056], [.18, s * .45, s * .3], null, false);
     }
-    // tie
-    put(new THREE.BoxGeometry(.046, .05, .022), M.tie, spine, [0, .345, .166], [.05, 0, 0], null, false);
-    put(new THREE.BoxGeometry(.038, .26, .014), M.tie, spine, [0, .205, .168], [.05, 0, 0], null, false);
-    put(new THREE.BoxGeometry(.02, .055, .012), M.tie, spine, [0, .068, .164], [.05, 0, 0], null, false);
-    // lapels
+    // wide red tie laid on the shirt: knot, blade and tapered tip
+    put(new THREE.BoxGeometry(.056, .05, .024), M.tie, spine, [0, .325, frontZ(.325, .034) + .006], [-.1, 0, 0], null, false);
+    put(new THREE.BoxGeometry(.068, .26, .014), M.tie, spine, [0, .19, frontZ(.19, .034) + .008], [-.12, 0, 0], null, false);
+    put(new THREE.BoxGeometry(.05, .1, .013), M.tie, spine, [0, .095, frontZ(.095, .034) + .004], [-.3, 0, 0], null, false);
+    // lapels folded over the shirt, following the chest curve
     for (const s of [-1, 1]) {
-      put(new THREE.BoxGeometry(.064, .33, .018), M.cloth2, spine, [s * .078, .215, .16], [.05, s * .34, s * .12], null, false);
-      put(new THREE.BoxGeometry(.008, .33, .02), M.cloth, spine, [s * .048, .215, .166], [.05, s * .34, s * .12], null, false);
+      put(new THREE.BoxGeometry(.072, .17, .016), M.cloth2, spine, [s * .068, .27, frontZ(.27, .034) + .004], [-.18, s * .26, s * .1], null, false);
+      put(new THREE.BoxGeometry(.068, .17, .014), M.cloth2, spine, [s * .072, .1, frontZ(.1, .034) + .006], [-.16, s * .2, s * .08], null, false);
+      put(new THREE.BoxGeometry(.008, .19, .012), M.cloth, spine, [s * .036, .235, frontZ(.235, .034) + .012], [-.16, s * .2, s * .08], null, false);
     }
     // pocket square
-    put(new THREE.BoxGeometry(.034, .028, .008), M.shirt, spine, [-.078, .292, .168], [0, 0, .6], null, false);
+    put(new THREE.BoxGeometry(.03, .024, .008), M.shirt, spine, [-.072, .285, frontZ(.285, .034) + .001], [-.12, 0, .6], null, false);
     // buttons
     for (let i = 0; i < 2; i++) {
-      put(sph(.0095, 8), M.gold, spine, [.02, .06 - i * .075, .17], [0, 0, 0], [1, 1, .5], false);
+      const by = .05 - i * .07;
+      put(sph(.0085, 8), M.gold, spine, [.022, by, frontZ(by, .034) + .004], [0, 0, 0], [1, 1, .5], false);
     }
     // jacket collar behind the neck
     put(new THREE.BoxGeometry(.135, .055, .03), M.cloth, neck, [0, .012, -.055], [0, 0, 0], null, false);
   } else if (def.gear === 'shirt') {
-    const pts = torsoPts(.018);
-    pts.unshift(new THREE.Vector2(.001, -.12));
-    pts.splice(1, 0, new THREE.Vector2(pts[1].x + .015, -.115));
+    const pts = torsoPts(.026);
+    pts.unshift(new THREE.Vector2(.001, -.21));
+    pts.splice(1, 0, new THREE.Vector2(.118, -.2));
+    pts.splice(2, 0, new THREE.Vector2(.15, -.172));
     put(new THREE.LatheGeometry(pts, 56), M.cloth, spine, null, null, [1, 1, B.depth * 1.04]);
-    // open collar with chest showing
-    const vShape = new THREE.Shape();
-    vShape.moveTo(-.05, .35); vShape.lineTo(.05, .35); vShape.lineTo(0, .22); vShape.lineTo(-.05, .35);
-    put(new THREE.ShapeGeometry(vShape), M.skin, spine, [0, 0, .152], [.05, 0, 0], null, false);
-    for (const s of [-1, 1]) {
-      put(new THREE.BoxGeometry(.055, .09, .015), M.cloth, neck, [s * .027, .002, .058], [.12, s * .48, s * .28], null, false);
-      put(new THREE.BoxGeometry(.055, .012, .016), M.trim, neck, [s * .027, -.042, .066], [.12, s * .48, s * .28], null, false);
+    // buttoned front placket, following the chest
+    for (let i = 0; i < 3; i++) {
+      const py = .2 - i * .145;
+      put(new THREE.BoxGeometry(.015, .15, .006), M.cloth, spine, [0, py, frontZ(py, .026) + .001], [0, 0, 0], null, false);
     }
-    // placket + buttons
-    put(new THREE.BoxGeometry(.016, .24, .012), M.cloth, spine, [0, .09, .156], [0, 0, 0], null, false);
-    for (let i = 0; i < 4; i++) {
-      put(sph(.0066, 8), M.trim, spine, [0, .19 - i * .058, .164], [0, 0, 0], [1, 1, .6], false);
+    for (let i = 0; i < 5; i++) {
+      const by = .27 - i * .072;
+      put(sph(.0058, 8), M.trim, spine, [0, by, frontZ(by, .026) + .003], [0, 0, 0], [1, 1, .6], false);
+    }
+    // collar band
+    put(new THREE.TorusGeometry(.05, .0115, 6, 22), M.cloth, neck, [0, .002, .006], [Math.PI / 2, 0, 0], [1, 1.05, 1], false);
+    // collar flaps, folded down and open at the throat
+    for (const s of [-1, 1]) {
+      put(new THREE.BoxGeometry(.044, .058, .012), M.cloth, neck, [s * .03, -.016, .056], [.24, s * .5, s * .34], null, false);
+      put(new THREE.BoxGeometry(.041, .009, .014), M.cloth2, neck, [s * .032, -.045, .058], [.24, s * .5, s * .34], null, false);
     }
     // chest pocket
-    put(new THREE.BoxGeometry(.062, .055, .01), M.cloth, spine, [.058, .185, .158], [0, 0, 0], null, false);
-    put(new THREE.BoxGeometry(.062, .008, .012), M.trim, spine, [.058, .213, .16], [0, 0, 0], null, false);
-    // belt + buckle
-    put(cyl(.185, .182, .055, 26), M.leather, hips, [0, .008, 0], [0, 0, 0], [1, 1, B.depth], false);
-    put(new THREE.BoxGeometry(.058, .045, .02), M.gold, hips, [0, .008, .142], [0, 0, 0], null, false);
-    // watch on the left wrist
-    put(new THREE.TorusGeometry(.043, .0075, 5, 16), M.leather, armL.wr, [0, -.004, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
-    put(cyl(.018, .018, .008, 12), M.gold, armL.wr, [0, -.004, .042], [Math.PI / 2, 0, 0], null, false);
+    put(new THREE.BoxGeometry(.052, .045, .007), M.cloth, spine, [.052, .18, frontZ(.18, .026) - .004], [-.2, 0, 0], null, false);
+    put(new THREE.BoxGeometry(.052, .006, .009), M.trim, spine, [.052, .204, frontZ(.204, .026) - .004], [-.2, 0, 0], null, false);
+    // trouser seat covering the hips, so no bare hip shows at the sides or front
+    put(sph(.158, 28), M.cloth2, hips, [0, -.052, 0], [0, 0, 0], [1.04, .88, B.depth * 1.14]);
+    // narrow waistband with a modest silver buckle
+    put(cyl(.127, .124, .04, 28), M.cloth2, hips, [0, .01, 0], [0, 0, 0], [1, 1, B.depth * 1.02], false);
+    const bz = .127 * B.depth * 1.02;
+    put(new THREE.BoxGeometry(.06, .04, .01), M.gold, hips, [0, .012, bz + .002], [0, 0, 0], null, false);
+    put(new THREE.BoxGeometry(.032, .022, .006), M.cloth2, hips, [0, .012, bz + .008], [0, 0, 0], null, false);
+
   } else {
     // torso garment
-    const inflate = def.gear === 'kurta' ? .016 : .028;
+    const inflate = def.gear === 'kurta' ? .03 : .034;
     const hem = def.gear === 'kurta' ? -.19 : -.15;
     const pts = torsoPts(inflate);
     pts.unshift(new THREE.Vector2(.001, hem));
@@ -1114,7 +1267,7 @@ export function buildFighter(def) {
       put(new THREE.BoxGeometry(.01, .22, .012), M.trim, hips, [.11, -.1, .085], [0, 0, 0], null, false);
       put(new THREE.BoxGeometry(.01, .22, .012), M.trim, hips, [-.11, -.1, .085], [0, 0, 0], null, false);
       // waist sash
-      put(new THREE.TorusGeometry(.162, .014, 8, 28), M.trim, hips, [0, .02, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.05], false);
+      put(new THREE.TorusGeometry(.148, .012, 8, 28), M.trim, hips, [0, .02, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.05], false);
     } else {
       // sherwani lapels + button placket
       for (const s of [-1, 1]) {
@@ -1130,7 +1283,7 @@ export function buildFighter(def) {
       }
     }
     // hem trim
-    put(new THREE.TorusGeometry(.145, .009, 5, 30), M.trim, hips, [0, def.gear === 'kurta' ? -.175 : -.135, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.04], false);
+    put(new THREE.TorusGeometry(.132, .008, 5, 30), M.trim, hips, [0, def.gear === 'kurta' ? -.172 : -.132, 0], [Math.PI / 2, 0, 0], [1, 1, B.depth * 1.04], false);
   }
 
   // earring

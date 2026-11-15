@@ -32,7 +32,33 @@ python3 -m http.server 3000 --bind 0.0.0.0
 | Pause | `Esc` |
 | Sound | `M` |
 
-On touch or mouse, use the on-screen D-pad and PUNCH / KICK / GRAB / SUPER buttons.
+On touch or mouse, drag the analog joystick in the bottom left (push right/left to walk,
+up to jump, down to crouch) and tap PUNCH / KICK / GRAB / SUPER on the right.
+
+Every key can be rebound from CONTROLS: click the key, press the new one, and it is saved on
+the device. RESET DEFAULTS puts the originals back.
+
+## Settings
+
+SETTINGS holds master volume, mute, graphics quality (LOW drops resolution and bloom,
+HIGH raises both) and screen shake. Everything is stored in `localStorage` and applied
+immediately.
+
+## Online play
+
+ONLINE gives you a five-character room code. The host presses CREATE and reads the code out;
+the guest types it and presses JOIN. Each player picks their own fighter, the host picks the
+arena, and the host presses START MATCH.
+
+Signalling goes through the public PeerJS broker (`0.peerjs.com`), so there is no server to run
+and no key to configure; the match data itself travels over a WebRTC data channel between the
+two browsers. The host runs the fight and streams fighter state about 20 times a second; the
+guest sends its inputs and predicts only its own walking. That keeps both players consistent at
+the cost of a little input latency for the guest, which is the usual trade for a host-authoritative
+fighter.
+
+Both players need the page open at the same time. If the opponent closes it, the match ends and
+the host returns to the main menu.
 
 ### Combos and specials
 
@@ -72,6 +98,7 @@ index.html      page shell: HUD, screens (title, select, versus, result, pause) 
 js/game.js      match flow, combat, AI, camera, HUD, input, render loop
 js/character.js fighter model (sculpted head, muscles, hands, cloth) and every animation clip
 js/arena.js     stage builders and registry: the torchlit akhada and the neon bazaar
+js/net.js       online rooms: PeerJS signalling, WebRTC data channel, room codes
 js/fx.js        hit sparks, dust, shock rings and synthesized audio
 js/env.js       renderer, tone mapping and the baked environment map
 js/util.js      procedural canvas textures and math helpers
