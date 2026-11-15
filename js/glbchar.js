@@ -113,6 +113,8 @@ export function createGlbFighter(def) {
   let pendingPose = null;
   let auraValue = 0;
   let flashValue = 0;
+  let groundY = null;
+  let frameCount = 0;
   const flashMats = [];
 
   const gltfRoot = new THREE.Group();
@@ -351,13 +353,17 @@ export function createGlbFighter(def) {
     contact.position.y = .015 - root.position.y;
     contact.scale.setScalar(.95);
 
-    /* keep the planted foot on the floor */
-    root.updateMatrixWorld(true);
+    /* keep the planted foot on the floor - the offset barely changes between
+       frames, so it is refreshed every other call instead of every frame */
     if (!p.air) {
-      const dy = restFootY - lowestFoot();
-      bodyGrp.position.y = dy;
+      if ((frameCount++ & 1) === 0 || groundY === null) {
+        bodyGrp.updateMatrixWorld(true);
+        groundY = restFootY - lowestFoot();
+      }
+      bodyGrp.position.y = groundY;
     } else {
       bodyGrp.position.y = 0;
+      groundY = null;
     }
     applyFlash();
   }

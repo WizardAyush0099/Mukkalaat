@@ -62,7 +62,7 @@ export const CHARACTERS = [
   },
   {
     id: 'boss', name: 'BOSS', style: 'SUITED ENFORCER', tag: 'THE DON',
-    stats: { POWER: 9, SPEED: 7, DEFENSE: 9 },
+    stats: { POWER: 9, SPEED: 9, DEFENSE: 9 },
     blurb: 'Sharp-suited officer. Grey hair, grey moustache, red tie, and a stare that ends arguments.',
     theme: ['#16151a', '#d43a3a'], mono: 'बॉ',
     palette: {
