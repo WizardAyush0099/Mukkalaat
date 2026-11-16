@@ -23,7 +23,7 @@ const AZ = new THREE.Vector3(0, 0, 1);
 
 const _qx = new THREE.Quaternion(), _qy = new THREE.Quaternion(), _qz = new THREE.Quaternion();
 const _r = new THREE.Quaternion(), _tmp = new THREE.Quaternion(), _v = new THREE.Vector3();
-const _p = new THREE.Vector3();
+const _p = new THREE.Vector3(), _fq = new THREE.Quaternion();
 
 /* world-frame rotation from the game's YXZ euler, same order as the primitive rig */
 function worldRot(out, x, y, z) {
@@ -101,7 +101,7 @@ export function createGlbFighter(def) {
     def,
     ready: false,
     error: null,
-    applyPose, flash, setAura,
+    applyPose, flash, setAura, worldPos,
     dispose
   };
 
@@ -116,6 +116,15 @@ export function createGlbFighter(def) {
   let groundY = null;
   let frameCount = 0;
   const flashMats = [];
+
+  /* game.js asks the model where a body part is (for hit sparks); accept the
+     primitive rig's joint names as well */
+  const POS_KEY = { chest: 'spine1', knL: 'kneeL', knR: 'kneeR', anL: 'ankleL', anR: 'ankleR', shL: 'armL', shR: 'armR' };
+  function worldPos(node, target = new THREE.Vector3()) {
+    if (!rig) return target.set(root.position.x, 1.1, 0);
+    const entry = rig[POS_KEY[node] || node] || rig[node] || rig.spine2 || rig.spine || rig.hips;
+    return entry ? entry.bone.getWorldPosition(target) : target.set(root.position.x, 1.1, 0);
+  }
 
   const gltfRoot = new THREE.Group();
   scaleGrp.add(gltfRoot);
@@ -140,7 +149,10 @@ export function createGlbFighter(def) {
 
     model.traverse(o => {
       if (!o.isMesh) return;
-      o.castShadow = true;
+      /* ten skinned meshes re-skinned into the shadow map every frame is the
+         single most expensive thing this model can do; the soft contact shadow
+         under his feet grounds him instead */
+      o.castShadow = false;
       o.receiveShadow = true;
       o.frustumCulled = false;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
@@ -166,54 +178,75 @@ export function createGlbFighter(def) {
     const byName = {};
     model.traverse(o => { if (o.isBone || o.type === 'Bone') byName[o.name] = o; });
 
-    /* the model is authored in a T-pose: drop the arms to the sides first, so the
-       game's pose values (written for a hanging arm) mean the same thing here */
-    root.updateMatrixWorld(true);
+    /* ---- bake the T-pose into something a fighting game can pose ----------
+       The arms are authored straight out with the palms on the floor. Dropping
+       them is split between the clavicle and the upper arm, so the deltoid is
+       not sheared out of the shoulder, and each hand is then rolled about its
+       finger axis until the palm faces the body - which also turns the knuckles
+       forward, where a punch needs them. */
     const DOWN = new THREE.Vector3(0, -1, 0);
-    for (const [armKey, handKey] of [['armL', 'handL'], ['armR', 'handR']]) {
-      const find = key => {
-        const re = BONE_PATTERNS.find(p => p[0] === key)[1];
-        const n = Object.keys(byName).find(name => re.test(name));
-        return n ? byName[n] : null;
-      };
-      const armBone = find(armKey), handBone = find(handKey);
-      if (!armBone || !handBone) continue;
-      const a = new THREE.Vector3(), b = new THREE.Vector3();
-      armBone.getWorldPosition(a);
-      handBone.getWorldPosition(b);
-      const dir = b.clone().sub(a).normalize();
-      const hang = new THREE.Quaternion().setFromUnitVectors(dir, DOWN);
-      const pw = new THREE.Quaternion();
-      if (armBone.parent) armBone.parent.getWorldQuaternion(pw); else pw.identity();
-      armBone.quaternion.premultiply(pw.clone().invert().multiply(hang).multiply(pw));
-    }
-    /* turn the palms inward: the authored hands are palm-forward, which reads
-       like a surrender pose in a fighting game */
     const findBone = re => {
       const n = Object.keys(byName).find(name => re.test(name));
       return n ? byName[n] : null;
     };
-    for (const side of [1, -1]) {
+
+    /* rotate a bone about its own origin by a world-space rotation */
+    function swingBone(bone, q) {
+      if (!bone) return;
+      const pw = new THREE.Quaternion();
+      if (bone.parent) bone.parent.getWorldQuaternion(pw); else pw.identity();
+      bone.quaternion.premultiply(pw.clone().invert().multiply(q).multiply(pw));
+    }
+
+    /* fingers / palm frame of one hand in world space at the current bind pose */
+    function handFrame(side) {
       const hand = findBone(side > 0 ? /^LeftHand_/ : /^RightHand_/);
       const mid = findBone(side > 0 ? /^LeftHandMiddle1/ : /^RightHandMiddle1/);
       const thumb = findBone(side > 0 ? /^LeftHandThumb1/ : /^RightHandThumb1/);
-      if (!hand || !mid || !thumb) continue;
+      if (!hand || !mid || !thumb) return null;
       const hp = new THREE.Vector3(), mp = new THREE.Vector3(), tp = new THREE.Vector3();
       hand.getWorldPosition(hp);
       mid.getWorldPosition(mp);
       thumb.getWorldPosition(tp);
-      const fDir = mp.clone().sub(hp).normalize();
-      const tDir = tp.clone().sub(hp).normalize();
-      const normal = new THREE.Vector3().crossVectors(fDir, tDir).normalize();
-      if (normal.z < 0) normal.negate();
-      const target = new THREE.Vector3(side > 0 ? -1 : 1, 0, 0);
-      const axis = new THREE.Vector3().crossVectors(normal, target);
-      const angle = Math.acos(Math.min(1, Math.max(-1, normal.dot(target))));
-      if (axis.lengthSq() < 1e-6 || angle < 1e-3) continue;
-      const roll = new THREE.Quaternion().setFromAxisAngle(axis.normalize(), angle * .85);
-      const pw = new THREE.Quaternion();
-      if (hand.parent) hand.parent.getWorldQuaternion(pw); else pw.identity();
-      hand.quaternion.premultiply(pw.clone().invert().multiply(roll).multiply(pw));
+      const f = mp.sub(hp).normalize();
+      const n = new THREE.Vector3().crossVectors(f, tp.sub(hp).normalize());
+      if (n.lengthSq() < 1e-8) return null;
+      n.normalize();
+      /* mirrored joints flip the cross product, so the palms are made to agree
+         with the bind pose, where a T-pose hand faces the floor */
+      if (n.y > 0) n.negate();
+      return { hand, f, n };
+    }
+
+    root.updateMatrixWorld(true);
+    for (const side of [1, -1]) {
+      const armBone = findBone(side > 0 ? /^LeftArm_/ : /^RightArm_/);
+      const hand = findBone(side > 0 ? /^LeftHand_/ : /^RightHand_/);
+      const clav = findBone(side > 0 ? /^LeftShoulder/ : /^RightShoulder/);
+      if (!armBone || !hand) continue;
+
+      const a = new THREE.Vector3(), b = new THREE.Vector3();
+      armBone.getWorldPosition(a);
+      hand.getWorldPosition(b);
+      const dir = b.sub(a).normalize();
+      const full = new THREE.Quaternion().setFromUnitVectors(dir, DOWN);
+      const collarbone = new THREE.Quaternion().slerp(full, .34);
+      if (clav) { swingBone(clav, collarbone); root.updateMatrixWorld(true); }
+      swingBone(armBone, clav ? full.clone().multiply(collarbone.clone().invert()) : full);
+      root.updateMatrixWorld(true);
+
+      /* palm toward the body */
+      const frame = handFrame(side);
+      if (!frame) continue;
+      const target = new THREE.Vector3(-side, 0, 0);
+      const axis = new THREE.Vector3().crossVectors(frame.n, target);
+      if (axis.lengthSq() < 1e-8) continue;
+      axis.normalize();
+      const angle = Math.acos(Math.max(-1, Math.min(1, frame.n.dot(target))));
+      if (angle > 1e-3) {
+        swingBone(hand, new THREE.Quaternion().setFromAxisAngle(axis, angle * .92));
+        root.updateMatrixWorld(true);
+      }
     }
     root.updateMatrixWorld(true);
 
@@ -237,17 +270,46 @@ export function createGlbFighter(def) {
       };
     }
 
+    /* ---- fingers ---------------------------------------------------------
+       Each knuckle folds about its own hinge, taken from the bone's direction
+       and the palm normal, so the same numbers curl a fist on either hand
+       instead of splaying the fingers out like claws. */
+    const palmFrames = { 1: handFrame(1), '-1': handFrame(-1) };
+    const bindQuat = new THREE.Quaternion();
+    const CURL = [1.15, 1.32, .8, .5];
+    const CURL_THUMB = [.55, .65, .45, .3];
     for (const name in byName) {
       const m = FINGER_RE.exec(name);
       if (!m) continue;
       const bone = byName[name];
+      const side = m[1] === 'Left' ? 1 : -1;
+      const frame = palmFrames[side];
+      if (!frame) continue;
+      const seg = Math.min(4, parseInt(m[3], 10));
+      const isThumb = m[2] === 'Thumb';
+
+      bone.getWorldQuaternion(bindQuat);
+      const inv = bindQuat.clone().invert();
+      const p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
+      bone.getWorldPosition(p0);
+      const child = bone.children.find(c => c.isBone);
+      let dir;
+      if (child) { child.getWorldPosition(p1); dir = p1.clone().sub(p0); }
+      else if (bone.parent) { bone.parent.getWorldPosition(p1); dir = p0.clone().sub(p1); }
+      if (!dir || dir.lengthSq() < 1e-10) continue;
+
+      const dirLocal = dir.normalize().applyQuaternion(inv).normalize();
+      const nLocal = frame.n.clone().applyQuaternion(inv).normalize();
+      const hinge = new THREE.Vector3().crossVectors(dirLocal, nLocal);
+      if (hinge.lengthSq() < 1e-8) continue;
+      hinge.normalize();
+
       fingers.push({
         bone,
         restLocal: bone.quaternion.clone(),
-        side: m[1] === 'Left' ? 1 : -1,
-        seg: parseInt(m[3], 10),
-        thumb: m[2] === 'Thumb',
-        finger: m[2]
+        hinge,
+        curl: (isThumb ? CURL_THUMB : CURL)[seg - 1] || .5,
+        side
       });
     }
 
@@ -345,9 +407,12 @@ export function createGlbFighter(def) {
     rotBone(rig.ankleL, p.anL, 0, 0);
     rotBone(rig.ankleR, p.anR, 0, 0);
 
-    /* hands stay exactly as the model was authored: this free rig's finger joints
-       each have their own axis, and forcing a shared curl turns them into claws */
-    for (const f of fingers) f.bone.quaternion.copy(f.restLocal);
+    /* hands close into fists and open again for grabs, from the pose's grip */
+    for (const f of fingers) {
+      const grip = Math.max(0, Math.min(1, f.side > 0 ? p.gripL : p.gripR));
+      _fq.setFromAxisAngle(f.hinge, -f.curl * grip);
+      f.bone.quaternion.copy(f.restLocal).multiply(_fq);
+    }
 
     /* contact shadow stays flat on the arena floor even while airborne */
     contact.position.y = .015 - root.position.y;

@@ -26,7 +26,7 @@ try {
   scene.environment = createEnvironment(renderer);
   camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 140);
 
-  const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+  const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 2 });
   composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.38, 0.68, 0.9);
@@ -93,15 +93,33 @@ function actionFor(code) {
 }
 function qualRatio() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return SET.quality === 'low' ? .8 : SET.quality === 'medium' ? Math.min(dpr, 1.25) : Math.min(dpr, 1.6);
+  return SET.quality === 'low' ? .75 : SET.quality === 'medium' ? Math.min(dpr, 1) : Math.min(dpr, 1.35);
+}
+/* the bloom chain is a blur: it does not need a full-resolution buffer, and at
+   half size it costs roughly a third of what it did */
+function sizeComposer(w, h) {
+  composer.setSize(w, h);
+  const s = SET.quality === 'high' ? .6 : .42;
+  bloom.setSize(Math.max(2, Math.round(w * s)), Math.max(2, Math.round(h * s)));
+}
+/* the canvas is pinned to the viewport, so it is sized from the layout box
+   rather than a guessed window size - that is what keeps the arena from being
+   stretched or pushed off screen on phones */
+function viewportSize() {
+  const d = document.documentElement;
+  return {
+    w: Math.max(320, d.clientWidth || window.innerWidth),
+    h: Math.max(240, d.clientHeight || window.innerHeight)
+  };
 }
 function applySettings() {
   audio.setVolume(SET.volume);
   audio.setMuted(SET.muted);
   renderer.setPixelRatio(qualRatio());
   renderer.shadowMap.enabled = SET.quality !== 'low';
-  renderer.setSize(innerWidth, innerHeight, false);
-  composer.setSize(innerWidth, innerHeight);
+  const { w, h } = viewportSize();
+  renderer.setSize(w, h, false);
+  sizeComposer(w, h);
   bloom.enabled = SET.quality !== 'low';
   document.body.classList.add('stick-mode');
 }
@@ -1364,10 +1382,14 @@ function updateCamera(dt) {
   if (!a || !b) return;
   const mid = (a.x + b.x) / 2;
   const sep = Math.abs(a.x - b.x);
+  /* narrow windows (a phone in landscape, the browser preview panel) crop the
+     fighters, so the camera backs off as the view gets tall and thin */
+  const aspect = innerWidth / Math.max(1, innerHeight);
+  const fit = aspect >= 1.5 ? 1 : Math.min(1.35, 1.5 / aspect);
   const desired = new THREE.Vector3(
     mid * .7,
     1.44 + Math.max(0, a.y, b.y) * .18 - S.zoom * .12,
-    4.3 + sep * .42 - S.zoom * .7
+    (4.3 + sep * .42 - S.zoom * .7) * fit
   );
   camera.position.lerp(desired, 1 - Math.exp(-5 * dt));
 
@@ -1380,7 +1402,7 @@ function updateCamera(dt) {
     S.shake = Math.max(0, S.shake - dt * 2.6);
   }
   camera.lookAt(target);
-  camera.fov = lerp(camera.fov, 34 - S.zoom * 2, 1 - Math.exp(-4 * dt));
+  camera.fov = lerp(camera.fov, (34 - S.zoom * 2) / Math.min(1.18, fit), 1 - Math.exp(-4 * dt));
   camera.updateProjectionMatrix();
 }
 
@@ -1658,11 +1680,33 @@ updatePips();
 let last = performance.now();
 let bootHidden = false;
 
+/* frame-rate watcher: a machine that cannot hold the chosen preset steps down
+   one notch instead of crawling for the whole match */
+const perf = { acc: 0, n: 0, grace: 150, locked: false };
+function watchPerf(raw) {
+  if (perf.locked) return;
+  if (perf.grace > 0) { perf.grace--; return; }
+  perf.acc += raw;
+  perf.n++;
+  if (perf.n < 100) return;
+  const avg = perf.acc / perf.n;
+  perf.acc = 0;
+  perf.n = 0;
+  if (avg <= 1 / 46) return;
+  const next = SET.quality === 'high' ? 'medium' : SET.quality === 'medium' ? 'low' : null;
+  if (!next) { perf.locked = true; return; }
+  SET.quality = next;
+  applySettings();
+  if (typeof syncSettingsUI === 'function') syncSettingsUI();
+  if (next === 'low') perf.locked = true;
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   const raw = Math.min(.05, (now - last) / 1000);
   last = now;
   clockState.t += raw;
+  watchPerf(raw);
 
   arena.update(raw, clockState.t);
 
@@ -1726,15 +1770,15 @@ function frame(now) {
 }
 
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const { w, h } = viewportSize();
   renderer.setPixelRatio(qualRatio());
   renderer.setSize(w, h, false);
-  composer.setSize(w, h);
-  bloom.setSize(w, h);
+  sizeComposer(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 
 resize();
 applySettings();
@@ -1742,7 +1786,7 @@ syncSettingsUI();
 requestAnimationFrame(frame);
 
 window.__mk = {
-  S, scene, camera, renderer, CHARACTERS, beginMatch, tryAttack, startRound, startAction, MOVES, finishMatch,
+  S, SET, applySettings, scene, camera, renderer, CHARACTERS, beginMatch, tryAttack, startRound, startAction, MOVES, finishMatch,
   get F() { return F; },
   get arena() { return arena; }
 };

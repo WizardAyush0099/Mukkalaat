@@ -1033,7 +1033,9 @@ export function buildFighter(def) {
   put(sph(.148, 24), M.skin, hips, [0, -.055, 0], [0, 0, 0], [1.0, .82, B.depth * 1.05]);
   // dark under-layer so no bare skin can peek through a seam in a dressed fighter
   if (def.gear === 'suit' || def.gear === 'shirt') {
-    put(new THREE.LatheGeometry(torsoPts(.012), 48), M.cloth2, spine, null, null, [1, 1, zScale]);
+    /* sits well inside the garment: at the same depth scale it showed through
+       the shirt around the shoulders as a dark bib */
+    put(new THREE.LatheGeometry(torsoPts(.006), 40), M.cloth2, spine, null, null, [.985, 1, zScale * .96]);
     put(sph(.152, 22), M.cloth2, hips, [0, -.055, 0], [0, 0, 0], [1.0, .84, B.depth * 1.1]);
   }
 
@@ -1083,8 +1085,10 @@ export function buildFighter(def) {
       put(cyl(.0415, .0405, .05, 16), M.shirt, wr, [0, -.004, 0], [0, 0, 0], [1, 1, 1], false);
       put(sph(.0055, 8), M.cloth2, wr, [0, -.006, .040], [0, 0, 0], [1, 1, .5], false);
     } else if (def.gear === 'shirt') {
-      // sleeve rolled to just below the elbow, with a soft cap over the deltoid
-      put(sph(.064, 18), M.cloth, chest, [s * .205 * B.shoulder, .233, 0], [0, 0, 0], [1.05, .78, 1.0], false);
+      // sleeve rolled to just below the elbow, with a soft cap over the deltoid:
+      // the cap rides on the shoulder joint, so a raised arm keeps its shoulder
+      put(sph(.067, 20), M.cloth, sh, [0, .004, 0], [0, 0, 0], [1.06, .86, 1.02], false);
+      put(new THREE.TorusGeometry(.062, .006, 6, 20), M.cloth2, sh, [0, -.052, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
       put(cyl(.071, .064, .3, 20), M.cloth, sh, [0, -.15, 0], [0, 0, 0], [1, 1, 1]);
       put(cyl(.062, .064, .052, 18), M.cloth, el, [0, -.036, 0], [0, 0, 0], [1, 1, 1]);
       put(new THREE.TorusGeometry(.064, .011, 8, 20), M.cloth, el, [0, -.012, 0], [Math.PI / 2, 0, 0], [1, 1, 1], false);
@@ -1181,9 +1185,10 @@ export function buildFighter(def) {
     pts.unshift(new THREE.Vector2(.001, -.18));
     pts.splice(1, 0, new THREE.Vector2(pts[1].x + .03, -.17));
     put(new THREE.LatheGeometry(pts, 56), M.cloth, spine, null, null, [1, 1, B.depth * 1.05]);
-    // structured shoulders
+    // structured shoulders, riding on the shoulder joints so they move with the arms
     for (const s of [-1, 1]) {
-      put(sph(.066, 20), M.cloth, chest, [s * .203 * B.shoulder, .243, 0], [0, 0, 0], [1.14, .7, 1.04], false);
+      const sh = s > 0 ? armL.sh : armR.sh;
+      put(sph(.07, 20), M.cloth, sh, [0, .012, 0], [0, 0, 0], [1.12, .78, 1.04], false);
     }
     // trouser seat under the jacket skirt
     put(sph(.156, 28), M.cloth2, hips, [0, -.06, 0], [0, 0, 0], [1.04, .92, B.depth * 1.14]);
